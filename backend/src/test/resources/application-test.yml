@@ -1,0 +1,11 @@
+# 기본 테스트는 외부 DB 없이 돌도록 H2를 사용한다.
+# 동시성처럼 실제 PostgreSQL 동작이 중요한 테스트는 이후 Testcontainers로 분리한다.
+spring:
+  datasource:
+    url: jdbc:h2:mem:doodok;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
