@@ -1,47 +1,36 @@
 # ERD 설계
 
-> 두독(DooDok) 데이터베이스 설계 문서
+> 두독(DooDok) 데이터베이스 설계 문서 (v2)
 > DB: PostgreSQL 17 + pgvector · ORM: Spring Data JPA
+>
+> MVP에 필요한 테이블을 먼저 잡았다. 기능을 붙이면서 테이블을 추가하고, 변경 내용은 이 문서의 변경 이력에 남긴다.
 
 ## 1. 전체 구조
-
-테이블은 역할에 따라 네 영역으로 나눈다.
 
 | 영역 | 테이블 | 역할 |
 |---|---|---|
 | 회원 | `users`, `refresh_tokens` | 회원, 로그인 토큰 |
-| 도서·독후감 | `books`, `reviews` | ISBN 기준 도서 마스터, 독후감 |
-| 거래 | `listings`, `listing_images`, `transactions`, `wishlists`, `book_alerts`, `chat_rooms`, `chat_messages`, `notifications` | 판매글, 거래, 찜, 채팅, 알림 |
-| AI | `book_embeddings`, `review_embeddings`, `user_taste_vectors`, `recommendation_logs`, `reading_reports`, `ai_jobs` | 추천, 독서 리포트, AI 작업 기록 |
+| 도서·독서 | `books`, `reviews`, `bookshelf_items` | ISBN 기준 도서 마스터, 독후감, 내 서재 |
+| 거래 | `listings`, `listing_images`, `transactions`, `trade_reviews` | 판매글, 사진, 거래, 거래 후기 |
+| 소통 | `chat_rooms`, `chat_messages`, `notifications` | 1:1 채팅, 알림 |
+| AI | `book_embeddings`, `review_embeddings` | 추천용 벡터 |
 
-중심은 **`books`**다. 같은 책의 여러 판매글과 여러 독후감이 하나의 `books` 행에 모이고, 시세·추천·리포트가 모두 여기서 출발한다.
+중심은 **`books`**다. 같은 책의 판매글, 독후감, 서재 항목이 모두 하나의 `books` 행에 모이고, 추천·시세·입고 알림이 여기서 출발한다.
 
 ## 2. ERD
 
-### 2-1. 회원 · 도서 · 독후감 · 거래
+### 2-1. 회원 · 도서 · 독서
 
 ```mermaid
 erDiagram
     users ||--o{ refresh_tokens : "로그인"
     users ||--o{ reviews : "작성"
-    users ||--o{ listings : "판매"
-    users ||--o{ transactions : "구매"
-    users ||--o{ wishlists : "찜"
-    users ||--o{ book_alerts : "입고 알림"
-    users ||--o{ notifications : "수신"
+    users ||--o{ bookshelf_items : "서재"
 
     books ||--o{ reviews : "독후감"
-    books ||--o{ listings : "매물"
-    books ||--o{ book_alerts : "알림 대상"
-
-    listings ||--o{ listing_images : "사진"
-    listings |o--o| reviews : "독후감 첨부"
-    listings ||--o{ transactions : "거래"
-    listings ||--o{ wishlists : "찜 대상"
-    listings ||--o{ chat_rooms : "문의"
-
-    chat_rooms ||--o{ chat_messages : "메시지"
-    users ||--o{ chat_messages : "발신"
+    books ||--o{ bookshelf_items : "담긴 책"
+    books ||--o{ book_embeddings : "도서 벡터"
+    reviews ||--o| review_embeddings : "독후감 벡터"
 
     users {
         bigint id PK
@@ -75,7 +64,6 @@ erDiagram
         varchar cover_image_url
         text description
         varchar category
-        varchar source "KAKAO, ALADIN"
         timestamptz created_at
         timestamptz updated_at
     }
@@ -86,6 +74,7 @@ erDiagram
         bigint book_id FK
         text content
         smallint rating "1~5"
+        date read_date "nullable"
         varchar visibility "PUBLIC, PRIVATE"
         boolean has_spoiler
         timestamptz created_at
@@ -93,21 +82,63 @@ erDiagram
         timestamptz deleted_at
     }
 
+    bookshelf_items {
+        bigint id PK
+        bigint user_id FK
+        bigint book_id FK
+        varchar status "WANT_TO_READ, READ"
+        boolean notify_on_listing
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    book_embeddings {
+        bigint id PK
+        bigint book_id FK
+        varchar kind "META, REVIEW_AVG"
+        vector embedding "vector(1536)"
+        varchar model_version
+        timestamptz updated_at
+    }
+
+    review_embeddings {
+        bigint review_id PK,FK
+        vector embedding "vector(1536)"
+        varchar model_version
+        timestamptz updated_at
+    }
+```
+
+### 2-2. 거래 · 채팅 · 알림
+
+```mermaid
+erDiagram
+    users ||--o{ listings : "판매"
+    books ||--o{ listings : "매물"
+    reviews |o--o| listings : "독후감 첨부"
+    listings ||--o{ listing_images : "사진"
+    listings ||--o{ chat_rooms : "문의"
+    listings ||--o{ transactions : "거래"
+    chat_rooms ||--o{ chat_messages : "메시지"
+    chat_rooms |o--o{ transactions : "예약 근거"
+    users ||--o{ chat_messages : "발신"
+    transactions ||--o{ trade_reviews : "후기"
+    users ||--o{ trade_reviews : "작성·수신"
+    users ||--o{ notifications : "수신"
+
     listings {
         bigint id PK
         bigint seller_id FK
         bigint book_id FK
-        bigint review_id FK,UK "nullable"
+        bigint review_id FK "nullable, UK"
         varchar title
         int price
         varchar condition_grade "S, A, B, C"
         text description
-        varchar status "ON_SALE, RESERVED, SOLD, HIDDEN"
         varchar trade_method "DIRECT, DELIVERY, BOTH"
-        varchar trade_region
-        int view_count
-        int wish_count
-        bigint version "낙관적 락"
+        varchar trade_place "nullable, 직거래 희망 장소"
+        int shipping_fee "nullable, 0이면 배송비 포함"
+        varchar status "ON_SALE, RESERVED, SOLD, HIDDEN"
         timestamptz created_at
         timestamptz updated_at
         timestamptz deleted_at
@@ -118,33 +149,6 @@ erDiagram
         bigint listing_id FK
         varchar image_url
         smallint sort_order
-        timestamptz created_at
-    }
-
-    transactions {
-        bigint id PK
-        bigint listing_id FK
-        bigint seller_id FK
-        bigint buyer_id FK
-        int agreed_price
-        varchar status "RESERVED, COMPLETED, CANCELED"
-        timestamptz reserved_at
-        timestamptz completed_at
-        timestamptz canceled_at
-    }
-
-    wishlists {
-        bigint id PK
-        bigint user_id FK
-        bigint listing_id FK
-        timestamptz created_at
-    }
-
-    book_alerts {
-        bigint id PK
-        bigint user_id FK
-        bigint book_id FK
-        timestamptz created_at
     }
 
     chat_rooms {
@@ -161,9 +165,33 @@ erDiagram
     chat_messages {
         bigint id PK
         bigint chat_room_id FK
-        bigint sender_id FK
+        bigint sender_id FK "nullable, SYSTEM이면 null"
         varchar type "TEXT, IMAGE, SYSTEM"
         text content
+        timestamptz created_at
+    }
+
+    transactions {
+        bigint id PK
+        bigint listing_id FK
+        bigint chat_room_id FK
+        bigint seller_id FK
+        bigint buyer_id FK
+        int agreed_price
+        varchar trade_method "DIRECT, DELIVERY"
+        varchar status "RESERVED, COMPLETED, CANCELED"
+        timestamptz reserved_at
+        timestamptz completed_at
+        timestamptz canceled_at
+    }
+
+    trade_reviews {
+        bigint id PK
+        bigint transaction_id FK
+        bigint reviewer_id FK
+        bigint reviewee_id FK
+        varchar rating "GOOD, NORMAL, BAD"
+        varchar content "nullable"
         timestamptz created_at
     }
 
@@ -178,235 +206,129 @@ erDiagram
     }
 ```
 
-### 2-2. AI (추천 · 독서 리포트)
-
-```mermaid
-erDiagram
-    books ||--o{ book_embeddings : "도서 벡터"
-    reviews ||--o| review_embeddings : "독후감 벡터"
-    users ||--o| user_taste_vectors : "취향 벡터"
-    users ||--o{ recommendation_logs : "추천 노출"
-    books ||--o{ recommendation_logs : "추천된 책"
-    users ||--o{ reading_reports : "월간 리포트"
-    users ||--o{ ai_jobs : "요청"
-
-    book_embeddings {
-        bigint id PK
-        bigint book_id FK
-        varchar kind "META, REVIEW_AVG"
-        vector embedding "vector(1536)"
-        varchar model_version
-        varchar source_hash
-        timestamptz updated_at
-    }
-
-    review_embeddings {
-        bigint review_id PK,FK
-        vector embedding "vector(1536)"
-        varchar model_version
-        varchar content_hash
-        timestamptz updated_at
-    }
-
-    user_taste_vectors {
-        bigint user_id PK,FK
-        vector embedding "vector(1536)"
-        int review_count
-        varchar model_version
-        timestamptz updated_at
-    }
-
-    recommendation_logs {
-        bigint id PK
-        bigint user_id FK
-        bigint book_id FK
-        bigint listing_id FK "nullable"
-        varchar strategy "CO_TRADE, EMBEDDING, HYBRID, CHAT"
-        double score
-        smallint position
-        varchar request_id
-        timestamptz shown_at
-        timestamptz clicked_at
-    }
-
-    reading_reports {
-        bigint id PK
-        bigint user_id FK
-        char year_month "2026-11"
-        jsonb stats "SQL 계산 결과"
-        jsonb content "LLM 생성 결과"
-        varchar status "GENERATED, FALLBACK"
-        varchar model_version
-        timestamptz created_at
-    }
-
-    ai_jobs {
-        bigint id PK
-        bigint user_id FK "nullable"
-        varchar job_type "REVIEW_EMBEDDING, BOOK_EMBEDDING, MONTHLY_REPORT, CHAT_RECOMMEND"
-        bigint target_id
-        varchar status "PENDING, RUNNING, SUCCEEDED, FAILED"
-        smallint attempt_count
-        varchar model
-        int input_tokens
-        int output_tokens
-        int latency_ms
-        text error_message
-        timestamptz created_at
-        timestamptz finished_at
-    }
-```
-
-## 3. 테이블 상세
+## 3. 테이블별 핵심 규칙
 
 ### 회원
+**users / refresh_tokens**
+- `email`, `nickname` 유니크. 탈퇴는 `deleted_at`으로 소프트 삭제한다. (거래·채팅 기록에서 상대방 정보가 사라지지 않도록)
+- 리프레시 토큰은 원문 대신 해시만 저장한다.
 
-**users**
-- 이메일 로그인 기준. `email`, `nickname`은 유니크.
-- 탈퇴는 `deleted_at`으로 소프트 삭제한다. 거래·채팅 기록에서 상대방 정보가 사라지면 안 되기 때문.
-
-**refresh_tokens**
-- 토큰 원문이 아닌 해시(`token_hash`)만 저장한다. DB가 유출돼도 토큰을 재사용할 수 없게 하기 위함.
-- 로그아웃·재발급 시 `revoked_at`을 채운다. 만료 토큰은 스케줄러로 정리한다.
-
-### 도서 · 독후감
-
+### 도서 · 독서
 **books**
-- 외부 도서 API(카카오, 알라딘)에서 가져온 정보를 **ISBN-13 기준으로 한 번만** 저장한다.
-- 판매글 등록이나 독후감 작성 시 ISBN으로 먼저 조회하고, 없으면 외부 API에서 가져와 저장한다.
-- 같은 책 정보가 판매글마다 중복 저장되지 않으므로 시세 계산, 추천, 검색이 모두 `book_id` 하나로 묶인다.
+- 외부 도서 API(카카오, 알라딘) 정보를 **ISBN-13 기준으로 한 번만** 저장한다.
+- 판매글·독후감·서재 담기 시 ISBN으로 먼저 조회하고, 없을 때만 외부 API를 호출한다.
 
 **reviews (독후감)**
-- `(user_id, book_id)` 유니크: **한 사람은 한 책에 독후감 하나**. 다시 읽으면 기존 글을 수정한다.
-  - 같은 책의 독후감이 여러 개면 취향 벡터에 그 책이 과하게 반영되기 때문.
-- `visibility = PRIVATE`인 글은 본인만 보고, 추천 근거 문장으로도 노출하지 않는다.
-- `has_spoiler`는 작성자가 직접 표시한다. (이후 AI 판정으로 보조)
+- 같은 책에 독후감을 여러 번 쓸 수 있다. `read_date`로 언제 읽은 기록인지 구분한다.
+- `PRIVATE` 글은 본인만 보고, 추천 근거 문장으로도 노출하지 않는다.
+
+**bookshelf_items (내 서재)**
+- `(user_id, book_id)` 유니크. 한 책은 서재에 한 번만 담긴다.
+- `WANT_TO_READ`(읽고 싶은 책), `READ`(읽은 책)
+- `notify_on_listing = true`면 그 책의 판매글이 새로 올라올 때 알림을 받는다. (입고 알림)
+- 독후감을 쓰면 해당 책을 `READ`로 자동 등록·변경한다.
+- 추천 결과 중 판매 중 매물이 없는 책은 "서재에 담고 알림 받기"로 연결한다.
 
 ### 거래
-
 **listings (판매글)**
-- `review_id`는 선택 사항이며 유니크다. 독후감 하나는 판매글 하나에만 첨부할 수 있다.
-  - 첨부하는 독후감은 판매자 본인의 같은 책 독후감이어야 한다. (애플리케이션에서 검증)
+- 거래 방법은 판매자가 고른다.
+  - `DIRECT`: 직거래만. `trade_place`에 희망 장소를 자유롭게 적는다. (동네 인증은 하지 않음)
+  - `DELIVERY`: 택배만. `shipping_fee`에 배송비를 적고, `0`이면 배송비 포함 가격이다.
+  - `BOTH`: 둘 다 가능
+- 배송 추적은 하지 않는다. 송장 번호 등은 채팅으로 주고받는다.
+- 독후감 첨부(`review_id`)는 선택이며, 독후감 하나는 판매글 하나에만 첨부할 수 있다.
 - `condition_grade`: S(새 책 수준), A(사용감 적음), B(밑줄·필기 일부), C(손상 있음)
-- `wish_count`는 목록 정렬용 집계 컬럼. 정확한 값은 `wishlists`가 기준이다.
-- `version`: 판매글 수정과 상태 변경이 동시에 일어날 때를 대비한 낙관적 락 컬럼.
+
+**chat_rooms / chat_messages**
+- 판매글 하나에 구매 희망자마다 채팅방 하나. `(listing_id, buyer_id)` 유니크.
+- 읽음 처리는 방마다 마지막으로 읽은 메시지 ID로 관리한다. 메시지마다 읽음 여부를 저장하는 것보다 쓰기가 훨씬 적다.
+- 예약·거래 완료·취소 같은 안내는 `SYSTEM` 메시지로 채팅방에 남긴다.
+- 이미지 메시지는 S3에 올린 URL을 `content`에 저장한다.
 
 **transactions (거래)**
-- 한 판매글에 거래가 여러 번 생길 수 있다. (예약 → 취소 → 다른 사람이 예약)
-- 대신 **진행 중이거나 완료된 거래는 판매글당 하나만** 존재해야 한다. 이를 부분 유니크 인덱스로 보장한다.
+- **판매자가 채팅한 구매자 중 한 명을 골라 예약**한다. 어떤 대화에서 예약됐는지 `chat_room_id`로 남긴다.
+- 실제 거래 방법(`DIRECT`/`DELIVERY`)을 예약할 때 정한다. 판매글이 `BOTH`여도 거래는 하나로 확정된다.
+- 예약이 취소되면 다른 사람과 다시 예약할 수 있어, 판매글 하나에 거래가 여러 번 생길 수 있다.
+- 대신 **진행 중·완료된 거래는 판매글당 하나**만 허용한다.
   ```sql
   CREATE UNIQUE INDEX uk_transactions_active_listing
       ON transactions (listing_id)
       WHERE status IN ('RESERVED', 'COMPLETED');
   ```
-- `agreed_price`: 판매글 가격과 실제 거래 가격이 다를 수 있어 따로 저장한다. 시세 계산에는 이 값을 쓴다.
+- 판매자가 두 채팅방에서 거의 동시에 예약을 눌러도 하나만 성공해야 한다. 조건부 UPDATE(`WHERE status = 'ON_SALE'`)로 먼저 막고, 위 인덱스로 한 번 더 보장한다.
+- `agreed_price`: 판매글 가격과 실제 거래 가격이 다를 수 있어 따로 저장한다. 시세 계산에 이 값을 쓴다.
 
-**wishlists / book_alerts**
-- `wishlists`: 판매글 찜. `(user_id, listing_id)` 유니크.
-- `book_alerts`: 아직 매물이 없는 책에 "매물 등록 시 알림"을 거는 기능. `(user_id, book_id)` 유니크.
-  - 추천했지만 판매 중인 매물이 없는 책을 여기로 연결한다.
+**trade_reviews (거래 후기)**
+- 거래가 `COMPLETED`일 때만 작성할 수 있다.
+- `(transaction_id, reviewer_id)` 유니크. 판매자와 구매자가 서로 한 번씩 남긴다.
+- 평가는 `GOOD / NORMAL / BAD` 세 단계로 단순하게 두고, 프로필에 "거래 n회, 좋아요 n%"로 보여준다.
 
-**chat_rooms / chat_messages**
-- 판매글 하나에 구매 희망자마다 채팅방 하나. `(listing_id, buyer_id)` 유니크.
-- 읽음 처리는 방마다 `seller_last_read_message_id`, `buyer_last_read_message_id`로 관리한다. 메시지마다 읽음 여부를 저장하는 것보다 쓰기가 훨씬 적다.
-- `chat_rooms.seller_id`는 `listings.seller_id`와 같지만, 채팅방 목록 조회 시 조인을 줄이기 위해 함께 저장한다.
-
+### 소통
 **notifications**
-- 채팅, 거래 상태 변경, 입고 알림, 리포트 생성 알림을 한 테이블에서 관리한다.
-- 알림 종류마다 필요한 값이 달라 `payload`는 jsonb로 둔다.
+- 채팅, 예약, 거래 완료, 거래 후기, 입고 알림을 한 테이블에서 관리한다.
+- 종류마다 필요한 값이 달라 `payload`는 jsonb로 둔다. (예: `{ "listingId": 31, "chatRoomId": 5 }`)
+- 실시간 전달은 SSE로 하고, 접속하지 않은 동안 쌓인 알림은 목록 API로 조회한다.
 
 ### AI
+**book_embeddings / review_embeddings**
+- 벡터는 행마다 6KB가 넘어 원본 테이블과 분리했다. 일반 조회가 가벼워지고, 모델을 바꿀 때 `model_version` 기준으로 교체할 수 있다.
+- `book_embeddings.kind`
+  - `META`: 도서 소개글로 만든 벡터. 독후감이 없는 책도 추천 가능 (콜드 스타트 대응)
+  - `REVIEW_AVG`: 그 책의 공개 독후감 벡터 평균
+- 임베딩은 독후감·도서 저장 후 비동기로 생성한다.
+- 같은 책에 독후감이 여러 개면 취향 계산에서 그 책이 과하게 반영될 수 있으므로, **책마다 가장 최근 독후감만** 사용한다.
+- 서재의 `WANT_TO_READ` 책도 취향 신호로 함께 쓴다.
 
-**왜 임베딩을 별도 테이블로 분리하나**
-- 1536차원 벡터는 행 하나가 6KB 이상이라, `books`·`reviews`에 두면 일반 조회까지 무거워진다.
-- 임베딩 모델을 바꾸면 전체를 다시 만들어야 하는데, 별도 테이블이면 `model_version` 기준으로 교체할 수 있다.
-- 임베딩은 비동기로 만들어지므로 "아직 없음" 상태를 테이블 행의 존재 여부로 자연스럽게 표현할 수 있다.
+## 4. 공통 원칙
 
-**book_embeddings**
-- `kind = META`: 출판사 소개글·카테고리·저자로 만든 벡터. 독후감이 없는 책도 첫날부터 추천할 수 있다. (콜드 스타트 대응)
-- `kind = REVIEW_AVG`: 그 책에 달린 공개 독후감 벡터의 평균. "독자들이 느낀 결"을 나타낸다.
-- `(book_id, kind, model_version)` 유니크.
-- `source_hash`: 원문이 바뀌지 않았으면 임베딩을 다시 만들지 않기 위한 값.
+- **PK**: `bigint` 자동 증가(`IDENTITY`)
+- **시간**: `timestamptz`로 저장, 표시만 KST
+- **금액**: 원 단위 `int`
+- **상태값**: `varchar` + JPA `EnumType.STRING`
+- **소프트 삭제**: `users`, `reviews`, `listings`
 
-**review_embeddings**
-- 독후감 저장 → AI 작업 등록 → 비동기로 임베딩 생성 → 저장.
-- `content_hash`로 내용이 실제로 바뀌었을 때만 다시 만든다.
-
-**user_taste_vectors**
-- 사용자가 쓴 독후감 벡터의 평균. 새 독후감이 생기면 전체를 다시 계산하지 않고 평균을 갱신한다.
-  - `새 평균 = (기존 평균 × review_count + 새 벡터) / (review_count + 1)`
-- 독후감이 없는 신규 사용자는 가입 시 고른 책 3권의 `META` 벡터 평균으로 시작한다.
-
-**recommendation_logs**
-- 어떤 방식(`strategy`)으로 어떤 책을 몇 번째(`position`)에 보여줬고 클릭했는지 기록한다.
-- 추천 방식별 클릭률을 비교하는 근거 데이터. `request_id`로 한 번의 추천 요청을 묶는다.
-
-**reading_reports**
-- `(user_id, year_month)` 유니크. 월 1회 배치로 만들고, 조회할 때는 LLM을 호출하지 않는다.
-- `stats`: 읽은 권수, 장르 비율, 거래 수 등 **SQL로 계산한 숫자**.
-- `content`: 취향 키워드, 요약, 다음 달 추천 등 **LLM이 만든 문장**. JSON 스키마 검증을 통과한 결과만 저장한다.
-- LLM이 계속 실패하면 `status = FALLBACK`으로 통계만 담긴 리포트를 저장한다.
-
-**ai_jobs**
-- 모든 AI 호출(임베딩, 리포트, 대화형 추천)을 한 곳에 기록한다.
-- 재시도 횟수, 토큰 사용량, 응답 시간, 실패 사유를 남겨 **비용과 품질을 측정하는 근거**로 쓴다.
-- `job_type + target_id`로 어떤 독후감·책·리포트에 대한 작업인지 찾는다.
-
-## 4. 인덱스
+## 5. 기본 인덱스
 
 | 테이블 | 인덱스 | 용도 |
 |---|---|---|
 | `books` | `isbn13` (UK) | ISBN 조회 |
-| `books` | `title` (pg_trgm GIN) | 제목 부분 검색 |
-| `reviews` | `(user_id, book_id)` (UK) | 1인 1독후감 |
 | `reviews` | `(book_id, visibility, created_at)` | 책 상세의 독후감 목록 |
-| `listings` | `(status, created_at DESC)` | 판매 중 매물 최신순 |
+| `reviews` | `(user_id, created_at)` | 내 독후감 목록 |
+| `bookshelf_items` | `(user_id, book_id)` (UK) | 중복 담기 방지 |
+| `bookshelf_items` | `(book_id) WHERE notify_on_listing` | 매물 등록 시 알림 대상 조회 |
+| `listings` | `(status, created_at)` | 판매 중 매물 최신순 |
 | `listings` | `(book_id, status)` | 책별 판매 중 매물, 추천 결과 재정렬 |
-| `listings` | `(seller_id, created_at DESC)` | 내 판매 목록 |
-| `transactions` | `listing_id` (부분 UK, RESERVED/COMPLETED) | 이중 거래 방지 |
-| `transactions` | `(buyer_id, status)` | 내 구매 목록, 함께 거래된 책 집계 |
-| `wishlists` | `(user_id, listing_id)` (UK) | 중복 찜 방지 |
 | `chat_rooms` | `(listing_id, buyer_id)` (UK) | 중복 채팅방 방지 |
-| `chat_messages` | `(chat_room_id, id DESC)` | 메시지 최신순 페이지네이션 |
+| `chat_rooms` | `(seller_id, last_message_at)`, `(buyer_id, last_message_at)` | 내 채팅방 목록 |
+| `chat_messages` | `(chat_room_id, id)` | 메시지 최신순 페이지네이션 |
+| `transactions` | `listing_id` (부분 UK) | 이중 거래 방지 |
+| `trade_reviews` | `(transaction_id, reviewer_id)` (UK) | 중복 후기 방지 |
+| `trade_reviews` | `(reviewee_id, created_at)` | 프로필의 받은 후기 |
+| `notifications` | `(user_id, read_at, created_at)` | 안 읽은 알림 수, 알림 목록 |
 | `book_embeddings` | `embedding` (HNSW, cosine) | 유사 도서 검색 |
-| `review_embeddings` | `embedding` (HNSW, cosine) | 유사 독후감 검색 |
-| `reading_reports` | `(user_id, year_month)` (UK) | 월별 리포트 중복 방지 |
-| `ai_jobs` | `(status, created_at)` | 대기 작업 조회 |
 
-## 5. 설계 원칙
+## 6. 이후 추가할 테이블
 
-- **PK**: 모든 테이블 `bigint` 자동 증가(`IDENTITY`).
-- **시간**: `timestamptz`로 저장해 서버 시간대와 무관하게 한다. 표시만 KST로 한다.
-- **금액**: 원 단위 `int`. 소수가 없으므로 실수형을 쓰지 않는다.
-- **상태값**: DB enum 대신 `varchar` + JPA `EnumType.STRING`. 값을 추가할 때 마이그레이션이 단순하다.
-- **소프트 삭제**: `users`, `reviews`, `listings`만 적용한다. 거래·채팅 기록에서 참조되기 때문.
-- **동시성**: 판매글 상태 변경은 조건부 UPDATE(`WHERE status = 'ON_SALE'`)로 먼저 막고, 부분 유니크 인덱스로 한 번 더 보장한다.
+| 단계 | 테이블 | 용도 |
+|---|---|---|
+| 캐시·성능 | (Redis Sorted Set) | 인기 매물·인기 도서 순위. 테이블 없이 Redis로 집계 |
+| 캐시·성능 | (집계 쿼리 + 캐시) | 도서별 시세: `transactions.agreed_price` 집계 |
+| 커뮤니티 | `review_likes` | 독후감 공감 |
+| 운영 | `reports`, `user_blocks` | 신고, 차단 (관리자 기능) |
+| AI 추천 | `user_taste_vectors` | 독후감·서재 기반 취향 벡터 |
+| AI 추천 | `recommendation_logs` | 추천 노출·클릭 기록, 방식별 비교 |
+| AI 리포트 | `reading_reports` | 월간 독서 리포트 (통계와 LLM 문장 분리 저장) |
+| AI 공통 | `ai_jobs` | AI 호출 상태·토큰·지연·실패 기록 |
 
-## 6. 핵심 흐름별 데이터 변화
+## 7. 범위에서 제외한 것
 
-**판매글 등록**
-1. ISBN으로 `books` 조회 → 없으면 외부 API에서 가져와 저장 (+ `book_embeddings(META)` 작업 등록)
-2. `listings`, `listing_images` 저장
-3. 그 책에 `book_alerts`를 건 사용자에게 `notifications` 생성
+- **결제(PG 연동)**: 개인 간 거래로 두고, 거래 상태 관리에 집중한다.
+- **배송 추적**: 송장 번호는 채팅으로 주고받는다.
+- **동네 인증·위치 기반 검색**: 직거래 장소는 판매자가 자유롭게 적는다.
 
-**구매 예약**
-1. `UPDATE listings SET status = 'RESERVED' WHERE id = ? AND status = 'ON_SALE'`
-2. 영향받은 행이 1개일 때만 `transactions(RESERVED)` 생성
-3. 동시에 두 요청이 와도 하나만 성공한다. 이 동작을 Testcontainers 동시성 테스트로 검증한다.
+## 변경 이력
 
-**독후감 작성**
-1. `reviews` 저장
-2. `ai_jobs(REVIEW_EMBEDDING)` 등록 → 비동기로 `review_embeddings` 생성
-3. `user_taste_vectors` 평균 갱신, 해당 책의 `book_embeddings(REVIEW_AVG)` 갱신
-
-**추천 조회**
-1. `user_taste_vectors`와 가까운 `book_embeddings`를 pgvector로 검색
-2. 함께 거래된 책 점수(`transactions` 집계)와 합산
-3. 판매 중인 `listings`가 있는 책만 남겨 가격·상태로 재정렬
-4. 노출 결과를 `recommendation_logs`에 기록
-
-## 7. 이후 단계에서 추가할 것
-
-- 대화형 추천 대화 기록 (`ai_chat_sessions`, `ai_chat_messages`)
-- 신고·차단 (`reports`, `user_blocks`)
-- 거래 후기·매너 평가 (`trade_reviews`)
+| 날짜 | 내용 |
+|---|---|
+| 2026-11-15 | v1 기본 구조 작성. 같은 책에 독후감 여러 개 허용, `read_date` 추가 |
+| 2026-11-15 | v2 채팅·알림·거래 후기·내 서재 추가. 거래 방법(직거래/택배) 선택, 판매자가 채팅 상대 중 예약자 선택 |
