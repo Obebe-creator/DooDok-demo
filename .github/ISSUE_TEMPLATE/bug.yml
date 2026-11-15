@@ -1,0 +1,26 @@
+name: 버그
+description: 의도와 다르게 동작하는 문제
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: 영역
+      options: [BE, FE, AI, infra]
+    validations:
+      required: true
+  - type: textarea
+    id: situation
+    attributes:
+      label: 상황과 재현 방법
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대한 동작
+  - type: textarea
+    id: cause
+    attributes:
+      label: 원인과 해결 (해결 후 작성)
