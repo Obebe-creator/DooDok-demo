@@ -59,5 +59,6 @@ npm run dev
 - [기능 명세](docs/01-feature-spec.md)
 - [기술 스택과 선택 이유](docs/02-tech-stack.md)
 - [로드맵](docs/03-roadmap.md)
+- [ERD 설계](docs/04-erd.md)
 - [개발 컨벤션](docs/05-conventions.md)
 - [의사결정 기록 (ADR)](docs/adr)
