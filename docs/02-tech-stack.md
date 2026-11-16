@@ -8,11 +8,12 @@
 | 프런트 | Next.js (App Router) + TypeScript + Tailwind | 기존 강점. 매물 페이지 SEO를 위해 SSR 필요 |
 | 백엔드 | Java 21 + Spring Boot 4 | 국내 백엔드 채용에서 가장 범용적인 조합 |
 | ORM | Spring Data JPA (+ QueryDSL 예정) | Prisma 외 ORM 경험, 동적 검색 쿼리 |
+| DB 마이그레이션 | Flyway | 부분 인덱스·pgvector처럼 JPA가 만들 수 없는 스키마를 SQL로 버전 관리 ([ADR 0002](adr/0002-flyway-testcontainers.md)) |
 | 인증 | Spring Security + JWT | Spring 생태계 핵심 |
 | DB | PostgreSQL + pgvector | 일반 데이터와 임베딩을 한 DB에서 관리 |
 | 캐시 | Redis | 도서 정보·매물 목록 캐싱, 성능 측정 |
 | AI | Spring AI + Gemini | 별도 Python 서버 없이 백엔드 안에서 임베딩·LLM 호출 |
-| 테스트 | JUnit 5, Mockito, Testcontainers(예정) | 동시성 테스트를 실제 DB 위에서 재현 |
+| 테스트 | JUnit 5, Mockito, Testcontainers | 통합 테스트를 운영과 같은 PostgreSQL(pgvector) 위에서 실행, 동시성 재현 |
 | 인프라 | Docker, GitHub Actions, AWS EC2·S3 | 컨테이너, CI/CD 경험 |
 
 ## 저장소 구조
