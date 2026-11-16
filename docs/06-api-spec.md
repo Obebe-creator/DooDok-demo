@@ -588,7 +588,9 @@ ON_SALE ──예약──▶ RESERVED ──완료──▶ SOLD
 | 401 | `INVALID_REFRESH_TOKEN` | 재발급 실패 |
 | 403 | `FORBIDDEN` | 권한 없음 |
 | 403 | `NOT_CHAT_PARTICIPANT` | 채팅방 참여자가 아님 |
+| 404 | `RESOURCE_NOT_FOUND` | 존재하지 않는 경로 |
 | 404 | `USER_NOT_FOUND` / `BOOK_NOT_FOUND` / `REVIEW_NOT_FOUND` / `LISTING_NOT_FOUND` / `CHAT_ROOM_NOT_FOUND` / `TRANSACTION_NOT_FOUND` / `BOOKSHELF_ITEM_NOT_FOUND` / `NOTIFICATION_NOT_FOUND` | 리소스 없음 |
+| 405 | `METHOD_NOT_ALLOWED` | 지원하지 않는 HTTP 메서드 |
 | 409 | `DUPLICATE_EMAIL` / `DUPLICATE_NICKNAME` | 중복 가입 |
 | 409 | `REVIEW_ALREADY_ATTACHED` | 다른 판매글에 첨부된 독후감 |
 | 409 | `LISTING_NOT_EDITABLE` | 수정할 수 없는 상태 |
@@ -599,6 +601,7 @@ ON_SALE ──예약──▶ RESERVED ──완료──▶ SOLD
 | 409 | `TRADE_NOT_COMPLETED` | 완료되지 않은 거래에 후기 작성 |
 | 409 | `TRADE_REVIEW_ALREADY_WRITTEN` | 이미 후기를 씀 |
 | 409 | `BOOKSHELF_ITEM_EXISTS` | 이미 서재에 담긴 책 |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 Content-Type |
 | 500 | `INTERNAL_ERROR` | 서버 오류 |
 | 502 | `BOOK_SEARCH_UNAVAILABLE` | 외부 도서 API 오류 |
 
@@ -624,3 +627,4 @@ ON_SALE ──예약──▶ RESERVED ──완료──▶ SOLD
 |---|---|
 | 2026-11-15 | v1 초안 작성 (인증, 회원, 도서, 독후감, 매물, 이미지, 거래, 추천) |
 | 2026-11-15 | v2 채팅(REST + STOMP), 알림(SSE), 거래 후기, 내 서재 추가. 거래 방법 선택, 판매자가 채팅 상대 중 예약자 선택 |
+| 2026-11-15 | 공통 에러 코드 추가 (`RESOURCE_NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNSUPPORTED_MEDIA_TYPE`) |
