@@ -12,10 +12,16 @@ spring:
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: ${JPA_DDL_AUTO:validate}
+      # 테이블은 Flyway 마이그레이션으로만 만든다. JPA는 엔티티와 테이블이 맞는지 검사만 한다.
+      ddl-auto: validate
     properties:
       hibernate:
         format_sql: true
+
+  flyway:
+    locations: classpath:db/migration
+    # 이름 규칙(V1__설명.sql)을 어긴 파일이 조용히 무시되지 않고 시작 시 실패하도록
+    validate-migration-naming: true
 
 management:
   endpoints:
@@ -34,5 +40,3 @@ spring:
       on-profile: local
   jpa:
     show-sql: true
-    hibernate:
-      ddl-auto: ${JPA_DDL_AUTO:update}

@@ -43,6 +43,20 @@
 - 응답 형식은 `GlobalExceptionHandler`가 `{ code, message, errors }`로 통일한다.
 - 목록 API는 `CursorResponse.fromFetched(...)`로 `size + 1`개를 조회해 다음 페이지 여부를 판단한다.
 
+## DB 마이그레이션 (backend)
+- 테이블 변경은 Flyway SQL로만 한다. JPA `ddl-auto`는 모든 환경에서 `validate`다.
+- 위치: `backend/src/main/resources/db/migration/`
+- 이름: `V{번호}__{설명}.sql` (밑줄 2개, 설명은 snake_case)
+  - 예: `V2__create_users.sql`, `V3__create_books.sql`
+  - 작업 전에 `develop`의 마지막 번호를 확인하고 다음 번호를 쓴다.
+- **이미 머지된 마이그레이션 파일은 수정하지 않는다.** 바꿀 내용은 새 파일로 추가한다. (Flyway가 체크섬으로 검사해 시작 시 실패한다)
+- 엔티티를 추가·수정하면 같은 PR에 마이그레이션을 함께 올린다.
+- 로컬 DB를 처음부터 다시 만들려면 `docker compose down -v` 후 `docker compose up -d`
+
+## 테스트 (backend)
+- 스프링 컨텍스트를 띄우는 테스트는 `@Import(TestcontainersConfiguration.class)`로 PostgreSQL 컨테이너를 쓴다. H2는 쓰지 않는다.
+- 로컬에서 테스트하려면 Docker Desktop이 실행 중이어야 한다.
+
 ## 작업 흐름
 1. 이슈 생성 (템플릿 사용)
 2. `develop`에서 브랜치 생성

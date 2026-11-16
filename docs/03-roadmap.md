@@ -11,6 +11,7 @@
 
 ## 1. Spring 기반
 - [x] 공통 응답·예외 처리 구조
+- [x] DB 마이그레이션(Flyway) + Testcontainers 테스트 환경
 - [ ] 회원가입·로그인 (Spring Security + JWT)
 - [ ] 외부 도서 API 연동, ISBN 기준 Book 저장
 - [ ] 매물 CRUD + 검색 (QueryDSL), 거래 방법 선택
