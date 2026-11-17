@@ -53,8 +53,15 @@
 - 엔티티를 추가·수정하면 같은 PR에 마이그레이션을 함께 올린다.
 - 로컬 DB를 처음부터 다시 만들려면 `docker compose down -v` 후 `docker compose up -d`
 
+## 패키지 구조 (backend)
+- `domain/{도메인}`: 엔티티, Repository, 서비스, 컨트롤러, 요청·응답 DTO, `XxxErrorCode`를 도메인별로 함께 둔다. (예: `domain/user`, `domain/auth`)
+- `global/`: 여러 도메인이 함께 쓰는 것. 설정(`config`), 예외(`exception`), 응답 형식(`response`), 보안(`security`), 공통 엔티티(`entity/BaseTimeEntity`)
+- 시간 컬럼(`created_at`, `updated_at`)이 있는 엔티티는 `BaseTimeEntity`를 상속한다.
+
 ## 테스트 (backend)
-- 스프링 컨텍스트를 띄우는 테스트는 `@Import(TestcontainersConfiguration.class)`로 PostgreSQL 컨테이너를 쓴다. H2는 쓰지 않는다.
+- 스프링 컨텍스트를 띄우는 통합 테스트는 `@IntegrationTest`(`support` 패키지)를 붙인다. 앱 전체 + PostgreSQL 컨테이너 + MockMvc가 함께 올라오고, 모든 통합 테스트가 같은 컨텍스트를 재사용한다. H2는 쓰지 않는다.
+- 서비스 로직은 Mockito로 단위 테스트한다. (DB 없이 빠르게)
+- 동시성 테스트는 `@Transactional` 롤백을 쓸 수 없으므로 `@AfterEach`에서 데이터를 지운다.
 - 로컬에서 테스트하려면 Docker Desktop이 실행 중이어야 한다.
 
 ## 작업 흐름

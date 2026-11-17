@@ -131,9 +131,12 @@
 // 201 Created
 { "id": 1, "email": "reader@doodok.com", "nickname": "책읽는곰" }
 ```
-- 비밀번호: 8~20자, 영문·숫자·특수문자 포함
-- 닉네임: 2~12자
-- 에러: `409 DUPLICATE_EMAIL`, `409 DUPLICATE_NICKNAME`
+- 이메일: 형식 검사, 최대 255자. **소문자로 바꿔 저장**한다. (`Reader@...`와 `reader@...`는 같은 이메일)
+- 비밀번호: 공백 없이 8~20자, 영문·숫자·특수문자를 모두 포함. BCrypt로 해시해 저장한다.
+- 닉네임: 2~12자, 한글·영문·숫자·밑줄(`_`)만
+- 성공하면 `Location: /api/users/{id}` 헤더를 함께 준다.
+- 이메일·닉네임 중복은 탈퇴하지 않은 회원 기준이다. 탈퇴한 회원의 이메일·닉네임으로는 다시 가입할 수 있다.
+- 에러: `400 INVALID_INPUT`, `409 DUPLICATE_EMAIL`, `409 DUPLICATE_NICKNAME`
 
 #### POST `/auth/login` 로그인
 ```json
@@ -628,3 +631,4 @@ ON_SALE ──예약──▶ RESERVED ──완료──▶ SOLD
 | 2026-11-15 | v1 초안 작성 (인증, 회원, 도서, 독후감, 매물, 이미지, 거래, 추천) |
 | 2026-11-15 | v2 채팅(REST + STOMP), 알림(SSE), 거래 후기, 내 서재 추가. 거래 방법 선택, 판매자가 채팅 상대 중 예약자 선택 |
 | 2026-11-15 | 공통 에러 코드 추가 (`RESOURCE_NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNSUPPORTED_MEDIA_TYPE`) |
+| 2026-11-17 | 회원가입 규칙 구체화: 이메일 소문자 정규화, 닉네임 허용 문자, `Location` 헤더, 탈퇴 회원 기준 중복 |
