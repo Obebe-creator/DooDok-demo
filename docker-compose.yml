@@ -1,4 +1,4 @@
-# 로컬 개발용 인프라: PostgreSQL(pgvector 포함) + Redis
+# 로컬 개발용 인프라: PostgreSQL(pgvector 포함) + Redis + Mailpit
 # 실행: docker compose up -d
 services:
   postgres:
@@ -32,6 +32,15 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # 로컬 개발용 가짜 메일 서버. 앱이 보낸 메일을 실제로 발송하지 않고 받아서 웹 화면에 보여준다.
+  # SMTP: localhost:1025 / 웹 메일함: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: doodok-mailpit
+    ports:
+      - "${MAIL_PORT:-1025}:1025"
+      - "8025:8025"
 
 volumes:
   postgres-data:
