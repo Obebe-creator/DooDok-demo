@@ -27,6 +27,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -99,6 +100,24 @@ class AuthApiTest {
     }
 
     @Test
+    @DisplayName("ASCII가 아닌 문자가 들어간 비밀번호는 400으로 막는다 (BCrypt 72바이트 제한 대비)")
+    void nonAsciiPasswordRejected() throws Exception {
+        // 20글자지만 UTF-8로는 74바이트. 허용하면 BCrypt가 예외를 던져 500이 된다.
+        String emojiPassword = "a1" + "\uD83D\uDE00".repeat(18);
+
+        signup("reader@doodok.com", emojiPassword, "책읽는곰")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.errors[0].field").value("password"));
+
+        signup("reader@doodok.com", "비밀번호abc1!", "책읽는곰")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("password"));
+
+        assertThat(userRepository.count()).isZero();
+    }
+
+    @Test
     @DisplayName("대소문자만 다른 같은 이메일로 가입하면 409 DUPLICATE_EMAIL")
     void duplicateEmailIgnoringCase() throws Exception {
         signup("reader@doodok.com", "Passw0rd!", "책읽는곰").andExpect(status().isCreated());
@@ -128,33 +147,41 @@ class AuthApiTest {
     }
 
     @Test
+    @Timeout(60) // 작업이 멈추더라도 테스트 전체가 무한정 대기하지 않게
     @DisplayName("같은 이메일로 동시에 가입해도 한 명만 성공하고 나머지는 DUPLICATE_EMAIL")
     void concurrentSignupWithSameEmail() throws Exception {
         int threadCount = 10;
-        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         CountDownLatch ready = new CountDownLatch(threadCount);
         CountDownLatch start = new CountDownLatch(1);
         Queue<Throwable> failures = new ConcurrentLinkedQueue<>();
         List<Future<?>> futures = new ArrayList<>();
 
-        for (int i = 0; i < threadCount; i++) {
-            String nickname = "동시가입" + i;
-            futures.add(executor.submit(() -> {
-                ready.countDown();
-                try {
-                    start.await(); // 모든 스레드가 준비되면 한꺼번에 출발
-                    authService.signup(new SignupRequest("same@doodok.com", "Passw0rd!", nickname));
-                } catch (Throwable t) {
-                    failures.add(t);
+        // try-with-resources: 블록을 어떻게 빠져나가든(성공, 시간 초과, 예외) close()가
+        // 남은 작업이 모두 끝날 때까지 기다린 뒤 스레드를 정리한다.
+        // 그래서 @AfterEach의 테이블 삭제가 아직 실행 중인 가입 작업과 겹치지 않는다.
+        try (ExecutorService executor = Executors.newFixedThreadPool(threadCount)) {
+            try {
+                for (int i = 0; i < threadCount; i++) {
+                    String nickname = "동시가입" + i;
+                    futures.add(executor.submit(() -> {
+                        ready.countDown();
+                        try {
+                            start.await(); // 모든 스레드가 준비되면 한꺼번에 출발
+                            authService.signup(new SignupRequest("same@doodok.com", "Passw0rd!", nickname));
+                        } catch (Throwable t) {
+                            failures.add(t);
+                        }
+                    }));
                 }
-            }));
+                assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            } finally {
+                // 준비 단계에서 실패해도 start를 기다리는 스레드가 풀려나야 close()가 끝날 수 있다.
+                start.countDown();
+            }
+            for (Future<?> future : futures) {
+                future.get(30, TimeUnit.SECONDS);
+            }
         }
-        ready.await();
-        start.countDown();
-        for (Future<?> future : futures) {
-            future.get(30, TimeUnit.SECONDS);
-        }
-        executor.shutdown();
 
         assertThat(userRepository.count()).isEqualTo(1);
         assertThat(failures).hasSize(threadCount - 1);
