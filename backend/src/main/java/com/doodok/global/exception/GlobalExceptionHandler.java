@@ -5,6 +5,8 @@ import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -17,7 +19,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * 컨트롤러에서 발생한 예외를 공통 에러 응답({@link ErrorResponse})으로 바꾼다.
- * 인증·인가 실패(401, 403)는 Security 필터 단계에서 발생하므로 인증 기능을 붙일 때 별도로 처리한다.
+ * 인증·인가 실패(401, 403)는 Security 필터에서 발생하지만, SecurityExceptionHandler가 이곳으로 넘겨서 같은 형식으로 응답한다.
  */
 @Slf4j
 @RestControllerAdvice
@@ -85,6 +87,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ErrorResponse> handleNoResource(NoResourceFoundException e) {
         return toResponse(CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    /** 인증 필요 (Security 필터에서 SecurityExceptionHandler를 거쳐 들어온다) */
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ErrorResponse> handleAuthentication(AuthenticationException e) {
+        return toResponse(CommonErrorCode.UNAUTHORIZED);
+    }
+
+    /** 권한 없음 (Security 필터, 또는 이후 메서드 보안에서 발생) */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException e) {
+        return toResponse(CommonErrorCode.FORBIDDEN);
     }
 
     /** 예상하지 못한 예외. 내부 메시지는 로그에만 남기고 응답에는 고정 문구를 보낸다. */

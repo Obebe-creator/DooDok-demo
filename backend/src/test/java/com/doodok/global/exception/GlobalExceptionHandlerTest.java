@@ -15,6 +15,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.InsufficientAuthenticationException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -117,6 +119,22 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.message").value(CommonErrorCode.INTERNAL_ERROR.getMessage()));
     }
 
+    @Test
+    @DisplayName("인증 예외는 401 UNAUTHORIZED로 응답한다")
+    void authenticationException() throws Exception {
+        mockMvc.perform(get("/test/unauthorized"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("권한 예외는 403 FORBIDDEN으로 응답한다")
+    void accessDeniedException() throws Exception {
+        mockMvc.perform(get("/test/forbidden"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
     // ===== 테스트용 컨트롤러와 에러 코드 =====
 
     enum TestErrorCode implements ErrorCode {
@@ -164,6 +182,16 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/test/param")
         String param(@RequestParam int size) {
             return "ok";
+        }
+
+        @GetMapping("/test/unauthorized")
+        String unauthorized() {
+            throw new InsufficientAuthenticationException("토큰 없음");
+        }
+
+        @GetMapping("/test/forbidden")
+        String forbidden() {
+            throw new AccessDeniedException("권한 없음");
         }
 
         @GetMapping("/test/unexpected")
