@@ -4,7 +4,6 @@ import com.doodok.domain.user.User;
 import com.doodok.domain.user.UserErrorCode;
 import com.doodok.domain.user.UserRepository;
 import com.doodok.global.exception.BusinessException;
-import java.util.Locale;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -25,7 +24,7 @@ public class AuthService {
 
     @Transactional
     public SignupResponse signup(SignupRequest request) {
-        String email = normalizeEmail(request.email());
+        String email = request.email(); // SignupRequest에서 이미 정규화되어 있다.
 
         // 1차: 대부분의 중복은 여기서 친절한 에러로 걸러진다.
         if (userRepository.existsByEmailAndDeletedAtIsNull(email)) {
@@ -46,11 +45,6 @@ public class AuthService {
         }
 
         return SignupResponse.from(user);
-    }
-
-    /** 대소문자만 다른 이메일로 중복 가입하는 것을 막기 위해 소문자로 저장한다. */
-    private String normalizeEmail(String email) {
-        return email.strip().toLowerCase(Locale.ROOT);
     }
 
     private RuntimeException toDuplicateException(DataIntegrityViolationException e) {

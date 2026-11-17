@@ -2,6 +2,7 @@ package com.doodok.domain.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -80,6 +81,21 @@ class AuthApiTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
                 .andExpect(jsonPath("$.errors[*].field", containsInAnyOrder("email", "password", "nickname")));
+    }
+
+    @Test
+    @DisplayName("소문자로 바꾸면 255자를 넘는 이메일은 저장 전에 400으로 막는다")
+    void emailTooLongAfterNormalization() throws Exception {
+        // 'İ'(U+0130)는 소문자로 바꾸면 "i̇"(2글자)가 된다. 원문은 255자, 변환 후 319자.
+        String email = "\u0130".repeat(64) + "@"
+                + "a".repeat(63) + "." + "b".repeat(63) + "." + "c".repeat(62);
+        assertThat(email).hasSize(255);
+
+        signup(email, "Passw0rd!", "책읽는곰")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.errors[*].field", hasItem("email")));
+        assertThat(userRepository.count()).isZero();
     }
 
     @Test
