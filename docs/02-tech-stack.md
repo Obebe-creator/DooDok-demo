@@ -9,11 +9,12 @@
 | 백엔드 | Java 21 + Spring Boot 4 | 국내 백엔드 채용에서 가장 범용적인 조합 |
 | ORM | Spring Data JPA (+ QueryDSL 예정) | Prisma 외 ORM 경험, 동적 검색 쿼리 |
 | DB 마이그레이션 | Flyway | 부분 인덱스·pgvector처럼 JPA가 만들 수 없는 스키마를 SQL로 버전 관리 ([ADR 0002](adr/0002-flyway-testcontainers.md)) |
-| 인증 | Spring Security + JWT | Spring 생태계 핵심 |
+| 인증 | Spring Security + JWT, 가입 전 이메일 인증 | Spring 생태계 핵심. 이후 구글·카카오 로그인에서 같은 이메일 계정을 안전하게 연결하려면 자체 가입 이메일이 인증돼 있어야 한다 ([ADR 0003](adr/0003-email-verification.md)) |
 | DB | PostgreSQL + pgvector | 일반 데이터와 임베딩을 한 DB에서 관리 |
-| 캐시 | Redis | 도서 정보·매물 목록 캐싱, 성능 측정 |
+| Redis | Redis + Lua 스크립트 | 지금: 이메일 인증 코드·signupToken(TTL), 요청 횟수 제한(카운터를 Lua로 원자 처리). 이후: 도서 정보·매물 목록 캐시, 인기 순위, 채팅 Pub/Sub |
+| 메일 | Spring Mail (SMTP) | 로컬은 Mailpit(실제 발송 없이 웹에서 확인), 운영은 AWS SES. SES도 SMTP를 지원해 설정만 바꿔 전환한다 |
 | AI | Spring AI + Gemini | 별도 Python 서버 없이 백엔드 안에서 임베딩·LLM 호출 |
-| 테스트 | JUnit 5, Mockito, Testcontainers | 통합 테스트를 운영과 같은 PostgreSQL(pgvector) 위에서 실행, 동시성 재현 |
+| 테스트 | JUnit 5, Mockito, Testcontainers | 통합 테스트를 운영과 같은 PostgreSQL(pgvector)·Redis 위에서 실행, 동시성 재현. 메일은 가짜 발송기로 받아 본문의 코드를 검증 |
 | 인프라 | Docker, GitHub Actions, AWS EC2·S3 | 컨테이너, CI/CD 경험 |
 
 ## 저장소 구조

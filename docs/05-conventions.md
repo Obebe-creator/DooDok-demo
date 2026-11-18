@@ -55,13 +55,20 @@
 
 ## 패키지 구조 (backend)
 - `domain/{도메인}`: 엔티티, Repository, 서비스, 컨트롤러, 요청·응답 DTO, `XxxErrorCode`를 도메인별로 함께 둔다. (예: `domain/user`, `domain/auth`)
-- `global/`: 여러 도메인이 함께 쓰는 것. 설정(`config`), 예외(`exception`), 응답 형식(`response`), 보안(`security`), 공통 엔티티(`entity/BaseTimeEntity`)
+- `global/`: 여러 도메인이 함께 쓰는 것. 설정(`config`), 예외(`exception`), 응답 형식(`response`), 보안(`security`), 메일(`mail`), 공통 엔티티(`entity/BaseTimeEntity`)
 - 시간 컬럼(`created_at`, `updated_at`)이 있는 엔티티는 `BaseTimeEntity`를 상속한다.
 
 ## 테스트 (backend)
-- 스프링 컨텍스트를 띄우는 통합 테스트는 `@IntegrationTest`(`support` 패키지)를 붙인다. 앱 전체 + PostgreSQL 컨테이너 + MockMvc가 함께 올라오고, 모든 통합 테스트가 같은 컨텍스트를 재사용한다. H2는 쓰지 않는다.
+- 스프링 컨텍스트를 띄우는 통합 테스트는 `@IntegrationTest`(`support` 패키지)를 붙인다. 앱 전체 + PostgreSQL·Redis 컨테이너 + MockMvc + 가짜 메일 발송기(`FakeEmailSender`)가 함께 올라오고, 모든 통합 테스트가 같은 컨텍스트를 재사용한다. H2는 쓰지 않는다.
+- 통합 테스트는 `@AfterEach`에서 `IntegrationTestHelper.cleanUp()`으로 DB·Redis·보낸 메일 기록을 비운다.
+- 회원가입이 필요한 테스트는 `IntegrationTestHelper.issueSignupToken(email)`으로 이메일 인증을 끝내고 signupToken을 받는다.
 - 서비스 로직은 Mockito로 단위 테스트한다. (DB 없이 빠르게)
-- 동시성 테스트는 `@Transactional` 롤백을 쓸 수 없으므로 `@AfterEach`에서 데이터를 지운다.
+- 동시성 테스트는 `@Transactional` 롤백을 쓸 수 없으므로 `@AfterEach`에서 데이터를 지운다. 스레드 풀은 try-with-resources로 닫아 남은 작업이 끝난 뒤 정리되게 한다.
+
+## Redis (backend)
+- 키 이름은 `{기능}:{종류}:{식별자}` 형식으로 쓴다. (예: `email-verification:code:{email}`) 키 목록은 `docs/04-erd.md` 4절에 정리한다.
+- 잠깐만 필요한 값에는 반드시 TTL을 건다.
+- 읽고 → 판단하고 → 쓰는 작업이 여러 명령에 걸치면, 그 사이에 다른 요청이 끼어들 수 있다. Lua 스크립트로 묶어 한 번에 실행한다. (예: 카운터 증가 + 첫 TTL, 코드 비교 + 삭제)
 - 로컬에서 테스트하려면 Docker Desktop이 실행 중이어야 한다.
 
 ## 작업 흐름
