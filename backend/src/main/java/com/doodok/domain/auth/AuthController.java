@@ -1,5 +1,6 @@
 package com.doodok.domain.auth;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.net.URI;
 import lombok.RequiredArgsConstructor;
@@ -20,8 +21,11 @@ public class AuthController {
     /** 인증 코드 발송. 메일은 비동기로 보내므로 202 Accepted */
     @PostMapping("/email-verifications")
     public ResponseEntity<EmailVerificationResponse> sendEmailVerificationCode(
-            @Valid @RequestBody EmailVerificationRequest request) {
-        return ResponseEntity.accepted().body(emailVerificationService.sendCode(request.email()));
+            @Valid @RequestBody EmailVerificationRequest request, HttpServletRequest httpRequest) {
+        // 지금은 프록시 없이 바로 받으므로 getRemoteAddr()가 실제 IP다.
+        // 배포에서 Nginx·로드밸런서 뒤에 두면 server.forward-headers-strategy 설정으로 실제 IP를 받게 해야 한다.
+        EmailVerificationResponse response = emailVerificationService.sendCode(request.email(), httpRequest.getRemoteAddr());
+        return ResponseEntity.accepted().body(response);
     }
 
     /** 인증 코드 확인 → signupToken 발급 */

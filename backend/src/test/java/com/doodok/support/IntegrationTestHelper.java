@@ -23,7 +23,7 @@ public class IntegrationTestHelper {
 
     /** 이메일 인증을 끝까지 진행하고 signupToken을 돌려준다. email은 정규화(소문자)된 값을 넣는다. */
     public String issueSignupToken(String email) {
-        emailVerificationService.sendCode(email);
+        emailVerificationService.sendCode(email, "test-helper");
         String code = emailSender.latestCodeFor(email);
         return emailVerificationService.confirm(email, code).signupToken();
     }

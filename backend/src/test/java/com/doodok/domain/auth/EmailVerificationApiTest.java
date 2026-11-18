@@ -6,12 +6,23 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.doodok.global.exception.BusinessException;
 import com.doodok.support.FakeEmailSender;
 import com.doodok.support.IntegrationTest;
 import com.doodok.support.IntegrationTestHelper;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
@@ -34,6 +45,9 @@ class EmailVerificationApiTest {
 
     @Autowired
     private StringRedisTemplate redis;
+
+    @Autowired
+    private EmailVerificationService emailVerificationService;
 
     @Autowired
     private IntegrationTestHelper helper;
@@ -62,11 +76,7 @@ class EmailVerificationApiTest {
                 .andReturn().getResponse().getContentAsString()
                 .replaceAll(".*\"signupToken\"\\s*:\\s*\"([^\"]+)\".*", "$1");
 
-        mockMvc.perform(post("/api/auth/signup")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                { "signupToken": "%s", "password": "Passw0rd!", "nickname": "책읽는곰" }
-                                """.formatted(token)))
+        signup(token)
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.email").value(EMAIL));
     }
@@ -77,26 +87,36 @@ class EmailVerificationApiTest {
         sendCode(EMAIL).andExpect(status().isAccepted());
         String code = emailSender.latestCodeFor(EMAIL);
 
-        String stored = redis.opsForValue().get("email-verification:code:" + EMAIL);
+        String stored = redis.opsForValue().get(EmailVerificationService.CODE_KEY + EMAIL);
         assertThat(stored).isNotNull().isNotEqualTo(code).hasSize(64);
     }
 
     @Test
     @DisplayName("이미 가입된 이메일이면 코드를 보내지 않고 409 DUPLICATE_EMAIL")
     void alreadyRegistered() throws Exception {
-        mockMvc.perform(post("/api/auth/signup")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                { "signupToken": "%s", "password": "Passw0rd!", "nickname": "책읽는곰" }
-                                """.formatted(helper.issueSignupToken(EMAIL))))
-                .andExpect(status().isCreated());
-        redis.delete("email-verification:cooldown:" + EMAIL);
+        signup(helper.issueSignupToken(EMAIL)).andExpect(status().isCreated());
+        redis.delete(EmailVerificationService.COOLDOWN_KEY + EMAIL); // 가입 과정에서 생긴 쿨다운만 지운다
         emailSender.clear();
 
         sendCode(EMAIL)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("DUPLICATE_EMAIL"));
         assertThat(emailSender.sentTo(EMAIL)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("한 IP에서 이메일을 바꿔가며 1시간에 20번을 넘게 요청하면 429 (가입 여부 대량 조회 방지)")
+    void ipLimit() throws Exception {
+        for (int i = 0; i < EmailVerificationService.IP_LIMIT; i++) {
+            sendCodeFrom("10.0.0.1", "user" + i + "@doodok.com").andExpect(status().isAccepted());
+        }
+
+        sendCodeFrom("10.0.0.1", "another@doodok.com")
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("EMAIL_VERIFICATION_IP_LIMIT"));
+
+        // 다른 IP는 영향을 받지 않는다.
+        sendCodeFrom("10.0.0.2", "another@doodok.com").andExpect(status().isAccepted());
     }
 
     @Test
@@ -115,12 +135,26 @@ class EmailVerificationApiTest {
     void dailyLimit() throws Exception {
         for (int i = 0; i < EmailVerificationService.DAILY_LIMIT; i++) {
             sendCode(EMAIL).andExpect(status().isAccepted());
-            redis.delete("email-verification:cooldown:" + EMAIL); // 쿨다운만 건너뛴다
+            redis.delete(EmailVerificationService.COOLDOWN_KEY + EMAIL); // 쿨다운만 건너뛴다
         }
 
         sendCode(EMAIL)
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.code").value("EMAIL_VERIFICATION_DAILY_LIMIT"));
+    }
+
+    @Test
+    @DisplayName("IP·일일·틀린 횟수 카운터에는 항상 TTL이 걸린다")
+    void countersAlwaysHaveTtl() throws Exception {
+        sendCode(EMAIL).andExpect(status().isAccepted());
+        confirm(EMAIL, wrongCodeFor(emailSender.latestCodeFor(EMAIL)));
+
+        Long ipTtl = redis.getExpire(EmailVerificationService.IP_KEY + "127.0.0.1", TimeUnit.SECONDS); // MockMvc 기본 IP
+        Long dailyTtl = redis.getExpire(EmailVerificationService.DAILY_KEY + EMAIL, TimeUnit.SECONDS);
+        Long attemptsTtl = redis.getExpire(EmailVerificationService.ATTEMPTS_KEY + EMAIL, TimeUnit.SECONDS);
+        assertThat(ipTtl).isPositive().isLessThanOrEqualTo(EmailVerificationService.IP_WINDOW.toSeconds());
+        assertThat(dailyTtl).isPositive().isLessThanOrEqualTo(EmailVerificationService.DAILY_WINDOW.toSeconds());
+        assertThat(attemptsTtl).isPositive().isLessThanOrEqualTo(EmailVerificationService.CODE_TTL.toSeconds());
     }
 
     @Test
@@ -157,7 +191,7 @@ class EmailVerificationApiTest {
     void expiredCode() throws Exception {
         sendCode(EMAIL).andExpect(status().isAccepted());
         String code = emailSender.latestCodeFor(EMAIL);
-        redis.delete("email-verification:code:" + EMAIL); // 5분이 지나 TTL로 지워진 상황
+        redis.delete(EmailVerificationService.CODE_KEY + EMAIL); // 5분이 지나 TTL로 지워진 상황
 
         confirm(EMAIL, code)
                 .andExpect(status().isBadRequest())
@@ -174,6 +208,48 @@ class EmailVerificationApiTest {
         confirm(EMAIL, code)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("EMAIL_VERIFICATION_CODE_EXPIRED"));
+    }
+
+    @Test
+    @Timeout(60)
+    @DisplayName("같은 코드로 동시에 확인해도 signupToken은 하나만 발급된다")
+    void concurrentConfirmIssuesOneToken() throws Exception {
+        emailVerificationService.sendCode(EMAIL, "10.0.0.1");
+        String code = emailSender.latestCodeFor(EMAIL);
+        int threadCount = 5; // 틀린 횟수 제한(5회) 안에서 모두 맞는 코드로 요청한다
+        CountDownLatch ready = new CountDownLatch(threadCount);
+        CountDownLatch start = new CountDownLatch(1);
+        Queue<SignupTokenResponse> issued = new ConcurrentLinkedQueue<>();
+        Queue<Throwable> failures = new ConcurrentLinkedQueue<>();
+        List<Future<?>> futures = new ArrayList<>();
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(threadCount)) {
+            try {
+                for (int i = 0; i < threadCount; i++) {
+                    futures.add(executor.submit(() -> {
+                        ready.countDown();
+                        try {
+                            start.await();
+                            issued.add(emailVerificationService.confirm(EMAIL, code));
+                        } catch (Throwable t) {
+                            failures.add(t);
+                        }
+                    }));
+                }
+                assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            } finally {
+                start.countDown();
+            }
+            for (Future<?> future : futures) {
+                future.get(30, TimeUnit.SECONDS);
+            }
+        }
+
+        assertThat(issued).hasSize(1);
+        assertThat(failures).hasSize(threadCount - 1);
+        assertThat(failures).allSatisfy(failure -> assertThat(failure)
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(AuthErrorCode.EMAIL_VERIFICATION_CODE_EXPIRED));
     }
 
     @Test
@@ -203,7 +279,15 @@ class EmailVerificationApiTest {
     }
 
     private ResultActions sendCode(String email) throws Exception {
+        return sendCodeFrom("127.0.0.1", email);
+    }
+
+    private ResultActions sendCodeFrom(String ip, String email) throws Exception {
         return mockMvc.perform(post("/api/auth/email-verifications")
+                .with(request -> {
+                    request.setRemoteAddr(ip);
+                    return request;
+                })
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         { "email": "%s" }
@@ -216,5 +300,13 @@ class EmailVerificationApiTest {
                 .content("""
                         { "email": "%s", "code": "%s" }
                         """.formatted(email, code)));
+    }
+
+    private ResultActions signup(String signupToken) throws Exception {
+        return mockMvc.perform(post("/api/auth/signup")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        { "signupToken": "%s", "password": "Passw0rd!", "nickname": "책읽는곰" }
+                        """.formatted(signupToken)));
     }
 }
