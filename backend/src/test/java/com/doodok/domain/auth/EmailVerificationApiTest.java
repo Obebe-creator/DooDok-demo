@@ -211,6 +211,26 @@ class EmailVerificationApiTest {
     }
 
     @Test
+    @DisplayName("새 코드가 발급되면 예전 코드로는 인증할 수 없고, 새 코드는 지워지지 않는다")
+    void oldCodeCannotConsumeNewCode() throws Exception {
+        sendCode(EMAIL).andExpect(status().isAccepted());
+        String oldCode = emailSender.latestCodeFor(EMAIL);
+        redis.delete(EmailVerificationService.COOLDOWN_KEY + EMAIL); // 쿨다운이 지난 상황
+        sendCode(EMAIL).andExpect(status().isAccepted());
+        String newCode = emailSender.latestCodeFor(EMAIL);
+        if (newCode.equals(oldCode)) {
+            return; // 백만 분의 1 확률로 같은 코드가 나오면 이 시나리오를 검증할 수 없다
+        }
+
+        confirm(EMAIL, oldCode)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("EMAIL_VERIFICATION_CODE_MISMATCH"));
+        assertThat(redis.hasKey(EmailVerificationService.CODE_KEY + EMAIL)).isTrue();
+
+        confirm(EMAIL, newCode).andExpect(status().isOk());
+    }
+
+    @Test
     @Timeout(60)
     @DisplayName("같은 코드로 동시에 확인해도 signupToken은 하나만 발급된다")
     void concurrentConfirmIssuesOneToken() throws Exception {

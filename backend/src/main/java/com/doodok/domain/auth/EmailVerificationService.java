@@ -67,6 +67,37 @@ public class EmailVerificationService {
             return count
             """, Long.class);
 
+    /**
+     * 코드 확인 전체(조회 → 틀린 횟수 증가 → 비교 → 삭제)를 Redis가 한 번에 실행한다.
+     * 코드를 Java로 읽어 와서 비교하고 나중에 지우면, 그 사이에 새 코드가 발급됐을 때
+     * 예전 코드로 비교에 성공하고 새 코드를 지우는 문제가 생길 수 있다. 스크립트 안에서는 다른 요청이 끼어들 수 없다.
+     *
+     * KEYS[1]=코드 키, KEYS[2]=틀린 횟수 키 / ARGV[1]=입력 코드의 해시, ARGV[2]=틀린 횟수 TTL(초), ARGV[3]=최대 시도 횟수
+     */
+    private static final RedisScript<Long> CONFIRM_CODE = RedisScript.of("""
+            local saved = redis.call('GET', KEYS[1])
+            if not saved then
+                return 0
+            end
+            local attempts = redis.call('INCR', KEYS[2])
+            if attempts == 1 then
+                redis.call('EXPIRE', KEYS[2], ARGV[2])
+            end
+            if attempts > tonumber(ARGV[3]) then
+                redis.call('DEL', KEYS[1])
+                return -1
+            end
+            if saved ~= ARGV[1] then
+                return -2
+            end
+            redis.call('DEL', KEYS[1], KEYS[2])
+            return 1
+            """, Long.class);
+
+    private static final long CONFIRMED = 1;
+    private static final long CODE_NOT_FOUND = 0;
+    private static final long ATTEMPTS_EXCEEDED = -1;
+
     private final StringRedisTemplate redis;
     private final UserRepository userRepository;
     private final EmailSender emailSender;
@@ -116,27 +147,21 @@ public class EmailVerificationService {
 
     /** 코드가 맞으면 signupToken을 발급한다. email은 정규화된 값이어야 한다. */
     public SignupTokenResponse confirm(String email, String code) {
-        String savedHash = redis.opsForValue().get(CODE_KEY + email);
-        if (savedHash == null) {
+        Long result = redis.execute(CONFIRM_CODE,
+                List.of(CODE_KEY + email, ATTEMPTS_KEY + email),
+                hash(code), String.valueOf(CODE_TTL.toSeconds()), String.valueOf(MAX_ATTEMPTS));
+
+        if (result == null || result == CODE_NOT_FOUND) {
+            // 만료, 요청한 적 없음, 이미 사용(동시에 들어온 다른 요청이 먼저 사용한 경우 포함)
             throw new BusinessException(AuthErrorCode.EMAIL_VERIFICATION_CODE_EXPIRED);
         }
-
-        // 틀린 횟수 제한: 6자리 코드를 무작위로 대입해 맞히는 것을 막는다.
-        if (incrementWithTtl(ATTEMPTS_KEY + email, CODE_TTL) > MAX_ATTEMPTS) {
-            redis.delete(CODE_KEY + email); // 코드를 폐기해 새로 요청하게 한다.
+        if (result == ATTEMPTS_EXCEEDED) {
+            // 6자리 코드를 무작위로 대입해 맞히는 것을 막는다. 코드는 스크립트에서 이미 폐기했다.
             throw new BusinessException(AuthErrorCode.EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED);
         }
-
-        if (!MessageDigest.isEqual(savedHash.getBytes(StandardCharsets.UTF_8), hash(code).getBytes(StandardCharsets.UTF_8))) {
+        if (result != CONFIRMED) {
             throw new BusinessException(AuthErrorCode.EMAIL_VERIFICATION_CODE_MISMATCH);
         }
-
-        // 코드는 한 번만 쓸 수 있다. 같은 코드로 동시에 확인해도 DEL은 한 요청에서만 true를 돌려주므로,
-        // 실제로 코드를 지운 요청만 토큰을 받는다. 나머지는 이미 사용된 코드로 처리한다.
-        if (!Boolean.TRUE.equals(redis.delete(CODE_KEY + email))) {
-            throw new BusinessException(AuthErrorCode.EMAIL_VERIFICATION_CODE_EXPIRED);
-        }
-        redis.delete(ATTEMPTS_KEY + email);
 
         String signupToken = generateToken();
         redis.opsForValue().set(SIGNUP_TOKEN_KEY + signupToken, email, SIGNUP_TOKEN_TTL);
