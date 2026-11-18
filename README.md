@@ -62,6 +62,10 @@ cd backend
 ./gradlew test
 ```
 
+배포 환경에서는 `JWT_SECRET`에 최소 32바이트의 랜덤 키를 Base64로 인코딩해 설정한다.
+설정하지 않으면 실행할 때마다 새 키가 생성되어 재시작 시 기존 Access Token이 무효화된다.
+리프레시 쿠키는 기본적으로 `Secure`이며, 로컬 HTTP 테스트에서만 필요에 따라 `AUTH_SECURE_COOKIE=false`로 설정한다.
+
 ### 3. 프런트엔드 (http://localhost:3000)
 ```bash
 cd frontend

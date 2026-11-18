@@ -45,6 +45,9 @@ spring:
           writetimeout: 5000
 
 doodok:
+  auth:
+    jwt-secret: ${JWT_SECRET:}
+    secure-cookie: ${AUTH_SECURE_COOKIE:true}
   mail:
     from: ${MAIL_FROM:no-reply@doodok.local}
 

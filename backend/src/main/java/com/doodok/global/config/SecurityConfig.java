@@ -1,5 +1,8 @@
 package com.doodok.global.config;
 
+import com.doodok.domain.user.UserRepository;
+import com.doodok.global.security.AccessTokens;
+import com.doodok.global.security.JwtAuthenticationFilter;
 import com.doodok.global.security.SecurityExceptionHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -10,10 +13,8 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-/**
- * 보안 설정. JWT 인증 필터는 로그인 기능에서 추가한다.
- */
 @Configuration
 @RequiredArgsConstructor
 public class SecurityConfig {
@@ -21,11 +22,13 @@ public class SecurityConfig {
     private final SecurityExceptionHandler securityExceptionHandler;
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, AccessTokens tokens, UserRepository users) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .httpBasic(basic -> basic.disable())
                 .formLogin(form -> form.disable())
+                .logout(logout -> logout.disable())
+                .addFilterBefore(new JwtAuthenticationFilter(tokens, users), UsernamePasswordAuthenticationFilter.class)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(securityExceptionHandler)
@@ -35,7 +38,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST,
                                 "/api/auth/email-verifications",
                                 "/api/auth/email-verifications/confirm",
-                                "/api/auth/signup").permitAll()
+                                "/api/auth/signup",
+                                "/api/auth/login",
+                                "/api/auth/refresh").permitAll()
                         .anyRequest().authenticated());
 
         return http.build();
