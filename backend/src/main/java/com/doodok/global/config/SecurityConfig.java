@@ -32,7 +32,10 @@ public class SecurityConfig {
                         .accessDeniedHandler(securityExceptionHandler))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/auth/signup").permitAll()
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/auth/email-verifications",
+                                "/api/auth/email-verifications/confirm",
+                                "/api/auth/signup").permitAll()
                         .anyRequest().authenticated());
 
         return http.build();

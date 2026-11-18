@@ -1,24 +1,18 @@
 package com.doodok.domain.auth;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
-import java.util.Locale;
 
 /**
  * POST /api/auth/signup 요청. 규칙은 docs/06-api-spec.md 3-1 참고
  *
- * <p>이메일은 생성자에서 정규화(앞뒤 공백 제거, 소문자 변환)한다.
- * 검증 어노테이션은 객체가 만들어진 뒤에 실행되므로, 길이·형식 검사가 정규화된 값(= 실제로 저장될 값)에 적용된다.
- * 소문자 변환으로 길이가 늘어나는 문자(예: 'İ' → "i̇")가 있어도 255자 제한을 넘는 값은 저장 전에 400으로 걸러진다.
+ * <p>이메일은 받지 않는다. 이메일 인증을 마치고 받은 signupToken에서 인증된 이메일을 꺼내 쓴다.
+ * (인증은 A 메일로 받고 가입은 B 메일로 하는 우회를 막기 위해)
  */
 public record SignupRequest(
 
-        @NotBlank(message = "이메일은 필수입니다.")
-        @Email(message = "이메일 형식이 올바르지 않습니다.")
-        @Size(max = 255, message = "이메일은 255자 이하여야 합니다.")
-        String email,
+        @NotBlank(message = "이메일 인증이 필요합니다.")
+        String signupToken,
 
         @NotBlank(message = "비밀번호는 필수입니다.")
         @Pattern(
@@ -35,18 +29,9 @@ public record SignupRequest(
         String nickname
 ) {
 
-    public SignupRequest {
-        email = normalizeEmail(email);
-    }
-
-    /** 대소문자만 다른 이메일로 중복 가입하는 것을 막기 위해 소문자로 맞춘다. */
-    private static String normalizeEmail(String email) {
-        return email == null ? null : email.strip().toLowerCase(Locale.ROOT);
-    }
-
-    /** 비밀번호가 로그나 디버거에 그대로 찍히지 않도록 가린다. */
+    /** 비밀번호와 토큰이 로그나 디버거에 그대로 찍히지 않도록 가린다. */
     @Override
     public String toString() {
-        return "SignupRequest[email=" + email + ", password=****, nickname=" + nickname + "]";
+        return "SignupRequest[signupToken=****, password=****, nickname=" + nickname + "]";
     }
 }

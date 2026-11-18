@@ -8,18 +8,13 @@ import org.junit.jupiter.api.Test;
 class SignupRequestTest {
 
     @Test
-    @DisplayName("이메일은 앞뒤 공백을 지우고 소문자로 바꾼다")
-    void normalizeEmail() {
-        SignupRequest request = new SignupRequest("  Reader@DooDok.COM ", "Passw0rd!", "책읽는곰");
+    @DisplayName("toString에는 signupToken과 비밀번호가 드러나지 않는다")
+    void toStringMasksSecrets() {
+        SignupRequest request = new SignupRequest("secret-token", "Passw0rd!", "책읽는곰");
 
-        assertThat(request.email()).isEqualTo("reader@doodok.com");
-    }
-
-    @Test
-    @DisplayName("이메일이 null이면 그대로 두어 @NotBlank 검증이 처리하게 한다")
-    void nullEmail() {
-        SignupRequest request = new SignupRequest(null, "Passw0rd!", "책읽는곰");
-
-        assertThat(request.email()).isNull();
+        assertThat(request.toString())
+                .doesNotContain("secret-token")
+                .doesNotContain("Passw0rd!")
+                .contains("책읽는곰");
     }
 }

@@ -12,6 +12,7 @@ import com.doodok.domain.user.UserErrorCode;
 import com.doodok.domain.user.UserRepository;
 import com.doodok.global.exception.BusinessException;
 import org.hibernate.exception.ConstraintViolationException;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,10 +24,13 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 /**
- * DB 없이 서비스 로직만 검증한다. Repository와 PasswordEncoder는 가짜 객체(Mock)로 바꾼다.
+ * DB·Redis 없이 회원가입 로직만 검증한다. 의존 객체는 모두 가짜 객체(Mock)로 바꾼다.
  */
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
+
+    private static final String TOKEN = "signup-token";
+    private static final String EMAIL = "reader@doodok.com";
 
     @Mock
     private UserRepository userRepository;
@@ -34,13 +38,21 @@ class AuthServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private EmailVerificationService emailVerificationService;
+
     @InjectMocks
     private AuthService authService;
 
-    private final SignupRequest request = new SignupRequest(" Reader@DooDok.com ", "Passw0rd!", "책읽는곰");
+    private final SignupRequest request = new SignupRequest(TOKEN, "Passw0rd!", "책읽는곰");
+
+    @BeforeEach
+    void setUp() {
+        given(emailVerificationService.getVerifiedEmail(TOKEN)).willReturn(EMAIL);
+    }
 
     @Test
-    @DisplayName("가입하면 이메일은 소문자로, 비밀번호는 인코딩해서 저장한다")
+    @DisplayName("signupToken의 인증된 이메일로 가입하고, 성공하면 토큰을 소모한다")
     void signupSuccess() {
         given(passwordEncoder.encode("Passw0rd!")).willReturn("{bcrypt}encoded");
 
@@ -49,16 +61,17 @@ class AuthServiceTest {
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).saveAndFlush(captor.capture());
         User saved = captor.getValue();
-        assertThat(saved.getEmail()).isEqualTo("reader@doodok.com");
+        assertThat(saved.getEmail()).isEqualTo(EMAIL);
         assertThat(saved.getPasswordHash()).isEqualTo("{bcrypt}encoded");
         assertThat(saved.getNickname()).isEqualTo("책읽는곰");
-        assertThat(response.email()).isEqualTo("reader@doodok.com");
+        assertThat(response.email()).isEqualTo(EMAIL);
+        verify(emailVerificationService).consumeSignupToken(TOKEN);
     }
 
     @Test
     @DisplayName("이미 가입된 이메일이면 DUPLICATE_EMAIL")
     void duplicateEmail() {
-        given(userRepository.existsByEmailAndDeletedAtIsNull("reader@doodok.com")).willReturn(true);
+        given(userRepository.existsByEmailAndDeletedAtIsNull(EMAIL)).willReturn(true);
 
         assertThatThrownBy(() -> authService.signup(request))
                 .isInstanceOf(BusinessException.class)
@@ -67,14 +80,15 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("이미 사용 중인 닉네임이면 DUPLICATE_NICKNAME")
-    void duplicateNickname() {
+    @DisplayName("닉네임이 중복이면 DUPLICATE_NICKNAME이고, 토큰은 남겨 두어 다시 시도할 수 있다")
+    void duplicateNicknameKeepsToken() {
         given(userRepository.existsByNicknameAndDeletedAtIsNull("책읽는곰")).willReturn(true);
 
         assertThatThrownBy(() -> authService.signup(request))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(UserErrorCode.DUPLICATE_NICKNAME);
         verify(userRepository, never()).saveAndFlush(any());
+        verify(emailVerificationService, never()).consumeSignupToken(any());
     }
 
     @Test

@@ -1,5 +1,6 @@
-# 로컬 개발용 인프라: PostgreSQL(pgvector 포함) + Redis
+# 로컬 개발용 인프라: PostgreSQL(pgvector 포함) + Redis + Mailpit
 # 실행: docker compose up -d
+# 포트는 127.0.0.1에만 연다. 같은 네트워크의 다른 기기에서 DB·Redis·메일함에 접근하지 못하게 하기 위해서다.
 services:
   postgres:
     image: pgvector/pgvector:pg17
@@ -10,7 +11,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-doodok}
       TZ: Asia/Seoul
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d
@@ -24,7 +25,7 @@ services:
     image: redis:7-alpine
     container_name: doodok-redis
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -32,6 +33,15 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # 로컬 개발용 가짜 메일 서버. 앱이 보낸 메일을 실제로 발송하지 않고 받아서 웹 화면에 보여준다.
+  # SMTP: localhost:1025 / 웹 메일함: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: doodok-mailpit
+    ports:
+      - "127.0.0.1:${MAIL_PORT:-1025}:1025"
+      - "127.0.0.1:8025:8025"
 
 volumes:
   postgres-data:

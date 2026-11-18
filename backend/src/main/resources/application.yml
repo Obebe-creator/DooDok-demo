@@ -23,6 +23,31 @@ spring:
     # 이름 규칙(V1__설명.sql)을 어긴 파일이 조용히 무시되지 않고 시작 시 실패하도록
     validate-migration-naming: true
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  # 로컬 기본값은 Mailpit. 운영에서는 환경 변수로 AWS SES SMTP 값을 넣는다.
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS:false}
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+doodok:
+  mail:
+    from: ${MAIL_FROM:no-reply@doodok.local}
+
 management:
   endpoints:
     web:

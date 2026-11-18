@@ -1,6 +1,6 @@
 # ERD 설계
 
-> 두독(DooDok) 데이터베이스 설계 문서 (v2.1)
+> 두독(DooDok) 데이터베이스 설계 문서 (v2.2)
 > DB: PostgreSQL 17 + pgvector · ORM: Spring Data JPA
 >
 > MVP에 필요한 테이블을 먼저 잡았다. 기능을 붙이면서 테이블을 추가하고, 변경 내용은 이 문서의 변경 이력에 남긴다.
@@ -35,7 +35,7 @@ erDiagram
     users {
         bigint id PK
         varchar email UK "255, 소문자 저장, 탈퇴 회원 제외 유니크"
-        varchar password_hash "255, BCrypt 해시"
+        varchar password_hash "255, BCrypt 해시. 소셜 로그인 때 nullable로 변경 예정"
         varchar nickname UK "12, 탈퇴 회원 제외 유니크"
         varchar profile_image_url "500, nullable"
         varchar role "USER, ADMIN"
@@ -212,6 +212,8 @@ erDiagram
 **users / refresh_tokens**
 - `email`, `nickname`은 **탈퇴하지 않은 회원 중에서** 유니크하다. (`WHERE deleted_at IS NULL` 부분 유니크 인덱스) 탈퇴 후 같은 이메일로 다시 가입할 수 있다.
 - 이메일은 소문자로 바꿔 저장한다.
+- **가입 전 이메일 인증**을 마친 이메일만 저장된다. 인증 코드와 signupToken은 DB가 아니라 Redis에 TTL로 저장한다. (아래 '테이블 밖 저장소' 참고)
+- `password_hash`는 현재 NOT NULL이다. 구글·카카오 로그인으로만 가입한 회원은 비밀번호가 없으므로, **소셜 로그인 기능에서 새 마이그레이션(V3 이후)으로 nullable로 바꾼다.** (V2는 이미 적용되어 수정하지 않는다)
 - 탈퇴는 `deleted_at`으로 소프트 삭제한다. (거래·채팅 기록에서 상대방 정보가 사라지지 않도록)
 - 리프레시 토큰은 원문 대신 해시만 저장한다.
 
@@ -318,6 +320,19 @@ CREATE UNIQUE INDEX uk_users_nickname ON users (nickname) WHERE deleted_at IS NU
 
 **JPA 매핑**: `domain/user/User.java` (`BaseTimeEntity` 상속으로 `created_at`, `updated_at` 자동 기록). `ddl-auto: validate`라서 엔티티와 이 DDL이 다르면 앱이 시작되지 않는다.
 
+### 테이블 밖 저장소 (Redis)
+몇 분만 필요한 데이터는 테이블 대신 Redis에 TTL을 걸어 저장한다. 만료되면 자동으로 지워져 정리 작업이 필요 없다. (`domain/auth/EmailVerificationService`)
+횟수 카운터는 `INCR`과 첫 `EXPIRE`를 Lua 스크립트로 묶어, TTL 없는 카운터가 남지 않게 한다.
+
+| 키 | 값 | TTL | 용도 |
+|---|---|---|---|
+| `email-verification:code:{email}` | 인증 코드의 SHA-256 해시 | 5분 | 코드 확인 |
+| `email-verification:attempts:{email}` | 틀린 횟수 | 5분 | 5회 초과 시 코드 폐기 |
+| `email-verification:cooldown:{email}` | `1` | 60초 | 재발송 쿨다운 |
+| `email-verification:daily:{email}` | 발송 횟수 | 1일 | 하루 10회 제한 |
+| `email-verification:ip:{ip}` | 요청 횟수 | 1시간 | IP당 20회 제한 (가입 여부 대량 조회 방지) |
+| `signup-token:{token}` | 인증된 이메일 | 10분 | 회원가입 시 이메일 확인, 가입 성공 후 삭제 |
+
 ## 5. 공통 원칙
 
 - **PK**: `bigint` 자동 증가(`IDENTITY`)
@@ -354,6 +369,8 @@ CREATE UNIQUE INDEX uk_users_nickname ON users (nickname) WHERE deleted_at IS NU
 
 | 단계 | 테이블 | 용도 |
 |---|---|---|
+| 소셜 로그인 | (`users` 변경) | `password_hash` NOT NULL 제거: `ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL` |
+| 소셜 로그인 | `user_social_accounts` | 회원과 구글·카카오 계정 연결 (`user_id`, `provider`, `provider_user_id`). `(provider, provider_user_id)` 유니크, `(user_id, provider)` 유니크. 한 회원이 자체 계정과 여러 소셜 계정을 함께 연결할 수 있다 |
 | 캐시·성능 | (Redis Sorted Set) | 인기 매물·인기 도서 순위. 테이블 없이 Redis로 집계 |
 | 캐시·성능 | (집계 쿼리 + 캐시) | 도서별 시세: `transactions.agreed_price` 집계 |
 | 커뮤니티 | `review_likes` | 독후감 공감 |
@@ -376,3 +393,4 @@ CREATE UNIQUE INDEX uk_users_nickname ON users (nickname) WHERE deleted_at IS NU
 | 2026-11-15 | v1 기본 구조 작성. 같은 책에 독후감 여러 개 허용, `read_date` 추가 |
 | 2026-11-15 | v2 채팅·알림·거래 후기·내 서재 추가. 거래 방법(직거래/택배) 선택, 판매자가 채팅 상대 중 예약자 선택 |
 | 2026-11-17 | v2.1 `users` 구현(`V2__create_users.sql`). 이메일·닉네임 유니크를 탈퇴 회원 제외 부분 인덱스로 변경, 이메일 소문자 저장. 다이어그램에 컬럼 길이·규칙 표시, 4절 구현 현황(DDL) 추가 |
+| 2026-11-17 | v2.2 가입 전 이메일 인증 규칙과 Redis 키 구조 추가. 이후 추가할 테이블에 `user_social_accounts`, 소셜 로그인 때 `password_hash` nullable 변경 예정 |

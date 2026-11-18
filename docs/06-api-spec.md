@@ -1,6 +1,6 @@
 # API 명세 (초안)
 
-> 두독(DooDok) REST API 초안 v2
+> 두독(DooDok) REST API 초안 v2.1
 > MVP 기능만 정의했다. 구현하면서 확정되는 내용은 Swagger(OpenAPI) 문서가 최종 기준이 되고, 이 문서는 설계 의도를 남기는 용도로 쓴다.
 
 ## 1. 공통 규칙
@@ -64,13 +64,16 @@
 | 403 | 권한 없음 (남의 글 수정 등) |
 | 404 | 리소스 없음 |
 | 409 | 상태 충돌 (이미 예약됨, 중복 가입 등) |
+| 429 | 요청 횟수 제한 초과 (인증 코드 재발송 등) |
 | 502 | 외부 API(도서 검색, AI) 오류 |
 
 ## 2. 엔드포인트 요약
 
 | 영역 | 메서드 | 경로 | 설명 | 인증 |
 |---|---|---|---|---|
-| 인증 | POST | `/auth/signup` | 회원가입 | - |
+| 인증 | POST | `/auth/email-verifications` | 이메일 인증 코드 발송 | - |
+| | POST | `/auth/email-verifications/confirm` | 인증 코드 확인, signupToken 발급 | - |
+| | POST | `/auth/signup` | 회원가입 (signupToken 필요) | - |
 | | POST | `/auth/login` | 로그인 | - |
 | | POST | `/auth/refresh` | 토큰 재발급 | 쿠키 |
 | | POST | `/auth/logout` | 로그아웃 | O |
@@ -123,20 +126,62 @@
 
 ### 3-1. 인증
 
+#### 가입 흐름 (가입 전 이메일 인증)
+```
+① POST /auth/email-verifications          { email }          → 메일로 6자리 코드 발송
+② POST /auth/email-verifications/confirm  { email, code }    → signupToken 발급
+③ POST /auth/signup                       { signupToken, ... } → 토큰의 인증된 이메일로 가입
+```
+- 이메일을 인증해야만 가입할 수 있다. 이후 소셜 로그인(구글·카카오)에서 같은 이메일의 계정을 연결할 때, 자체 가입 이메일이 인증된 상태임을 보장하기 위해서다.
+- 인증 데이터(코드, signupToken)는 Redis에 TTL로 저장하고, 만료되면 자동으로 사라진다.
+
+#### POST `/auth/email-verifications` 인증 코드 발송
+```json
+// Request
+{ "email": "reader@doodok.com" }
+
+// 202 Accepted
+{ "expiresIn": 300, "resendAvailableIn": 60 }
+```
+- 이메일: 형식 검사, 최대 255자. 앞뒤 공백을 지우고 **소문자로 바꾼 값**을 기준으로 검사·발송·저장한다. (`Reader@...`와 `reader@...`는 같은 이메일)
+- 메일은 비동기로 보내서 202로 응답한다. 코드는 숫자 6자리, 유효 시간 5분(`expiresIn`, 초)
+- 새 코드를 발급하면 이전 코드와 틀린 횟수는 무효가 된다.
+- 제한: 같은 이메일로 60초에 1번(`resendAvailableIn`, 초), 하루 10번 / 같은 IP에서 1시간에 20번
+- 이미 가입된 이메일이면 코드를 보내지 않고 `409 DUPLICATE_EMAIL`로 바로 알려준다.
+- **가입 여부 노출(계정 열거)은 감수한 위험이다.**
+  - 이 API는 로그인 없이 누구나 부를 수 있어서, 응답 차이로 가입 여부를 알 수 있다.
+  - 응답을 똑같이 주고 안내 메일을 보내는 방식도 검토했지만, 사용자가 메일함을 열어봐야 이미 가입한 것을 알 수 있어 UX를 우선했다. 중고책 서비스 가입 여부는 민감한 정보가 아니라고 판단했다.
+  - 대신 IP당 요청 수를 제한해(가입 여부 확인 전에 검사) 대량 조회를 막고, 열거한 목록으로 비밀번호를 대입하는 공격은 로그인 시도 제한으로 막는다.
+- 에러: `400 INVALID_INPUT`, `409 DUPLICATE_EMAIL`, `429 EMAIL_VERIFICATION_IP_LIMIT`, `429 EMAIL_VERIFICATION_TOO_FREQUENT`, `429 EMAIL_VERIFICATION_DAILY_LIMIT`
+
+#### POST `/auth/email-verifications/confirm` 인증 코드 확인
+```json
+// Request
+{ "email": "reader@doodok.com", "code": "000916" }
+
+// 200 OK
+{ "signupToken": "WAYr2oO2RCWHYWN_7WJcDkg7s8s1ugHaDXs-yHtZIHw", "expiresIn": 600 }
+```
+- 코드가 맞으면 signupToken(유효 10분, 한 번만 사용)을 발급한다. 코드는 한 번 확인하면 폐기된다. 같은 코드로 동시에 확인해도 토큰은 하나만 발급된다.
+- 코드를 5번 틀리면 코드를 폐기한다. 새 코드를 요청해야 한다.
+- 에러: `400 INVALID_INPUT`(코드가 숫자 6자리가 아님), `400 EMAIL_VERIFICATION_CODE_EXPIRED`(만료, 요청한 적 없음, 이미 사용), `400 EMAIL_VERIFICATION_CODE_MISMATCH`, `429 EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED`
+
 #### POST `/auth/signup` 회원가입
 ```json
 // Request
-{ "email": "reader@doodok.com", "password": "Passw0rd!", "nickname": "책읽는곰" }
+{ "signupToken": "WAYr2oO2RCWHYWN_7WJcDkg7s8s1ugHaDXs-yHtZIHw", "password": "Passw0rd!", "nickname": "책읽는곰" }
 
-// 201 Created
+// 201 Created  (+ Location: /api/users/1)
 { "id": 1, "email": "reader@doodok.com", "nickname": "책읽는곰" }
 ```
-- 이메일: 형식 검사, 최대 255자. **소문자로 바꿔 저장**한다. (`Reader@...`와 `reader@...`는 같은 이메일)
-- 비밀번호: 공백 없이 8~20자, 영문·숫자·특수문자를 모두 포함. BCrypt로 해시해 저장한다.
+- 이메일은 요청에 담지 않는다. signupToken에 연결된 **인증된 이메일**로 가입한다. (A 메일로 인증하고 B 메일로 가입하는 우회 방지)
+- 비밀번호: 8~20자, **ASCII 영문·숫자·키보드 특수문자만** 허용하고 세 가지를 모두 포함. 공백·한글·이모지는 쓸 수 없다. BCrypt로 해시해 저장한다. (BCrypt는 72바이트까지만 처리하므로, ASCII로 제한해 최대 20바이트로 유지한다)
 - 닉네임: 2~12자, 한글·영문·숫자·밑줄(`_`)만
 - 성공하면 `Location: /api/users/{id}` 헤더를 함께 준다.
+- signupToken은 **가입에 성공했을 때만** 소모된다. 닉네임 중복 등으로 실패하면 같은 토큰으로 다시 시도할 수 있다.
 - 이메일·닉네임 중복은 탈퇴하지 않은 회원 기준이다. 탈퇴한 회원의 이메일·닉네임으로는 다시 가입할 수 있다.
-- 에러: `400 INVALID_INPUT`, `409 DUPLICATE_EMAIL`, `409 DUPLICATE_NICKNAME`
+- 에러: `400 INVALID_INPUT`, `400 INVALID_SIGNUP_TOKEN`(만료, 이미 사용, 존재하지 않음), `409 DUPLICATE_EMAIL`, `409 DUPLICATE_NICKNAME`
+  - 여기서 `DUPLICATE_EMAIL`은 인증을 마친 뒤 같은 이메일로 다른 가입이 먼저 끝난 경우에만 나온다.
 
 #### POST `/auth/login` 로그인
 ```json
@@ -585,6 +630,9 @@ ON_SALE ──예약──▶ RESERVED ──완료──▶ SOLD
 | 400 | `INVALID_REVIEW_ATTACHMENT` | 첨부할 수 없는 독후감 |
 | 400 | `CANNOT_CHAT_OWN_LISTING` | 본인 판매글에 채팅 시작 |
 | 400 | `INVALID_CHAT_ROOM` | 이 판매글의 채팅방이 아님 |
+| 400 | `EMAIL_VERIFICATION_CODE_EXPIRED` | 인증 코드 만료, 요청한 적 없음, 이미 사용 |
+| 400 | `EMAIL_VERIFICATION_CODE_MISMATCH` | 인증 코드 불일치 |
+| 400 | `INVALID_SIGNUP_TOKEN` | signupToken 만료, 이미 사용, 존재하지 않음 |
 | 401 | `UNAUTHORIZED` | 인증 필요 |
 | 401 | `TOKEN_EXPIRED` | Access Token 만료 (프런트는 이 코드로 재발급 시도) |
 | 401 | `INVALID_CREDENTIALS` | 로그인 실패 |
@@ -605,6 +653,10 @@ ON_SALE ──예약──▶ RESERVED ──완료──▶ SOLD
 | 409 | `TRADE_REVIEW_ALREADY_WRITTEN` | 이미 후기를 씀 |
 | 409 | `BOOKSHELF_ITEM_EXISTS` | 이미 서재에 담긴 책 |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | 지원하지 않는 Content-Type |
+| 429 | `EMAIL_VERIFICATION_IP_LIMIT` | 같은 IP에서 인증 코드 요청 한도(1시간 20회) 초과 |
+| 429 | `EMAIL_VERIFICATION_TOO_FREQUENT` | 인증 코드 재발송 쿨다운(60초) 중 |
+| 429 | `EMAIL_VERIFICATION_DAILY_LIMIT` | 인증 코드 하루 발송 한도(10회) 초과 |
+| 429 | `EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED` | 인증 코드 입력 5회 초과, 코드 폐기 |
 | 500 | `INTERNAL_ERROR` | 서버 오류 |
 | 502 | `BOOK_SEARCH_UNAVAILABLE` | 외부 도서 API 오류 |
 
@@ -612,6 +664,7 @@ ON_SALE ──예약──▶ RESERVED ──완료──▶ SOLD
 
 | 단계 | API |
 |---|---|
+| 소셜 로그인 | 구글·카카오 로그인 (`GET /auth/oauth/{provider}`, 콜백). 소셜 쪽에서 인증된 이메일이면 같은 이메일의 기존 계정과 연결, 카카오에서 이메일을 받지 못하면 이메일 인증 흐름으로 입력받음 |
 | 캐시·성능 | 도서 시세 (`GET /books/{id}/price-stats`): 최근 거래가 평균, 정가 대비 비율 |
 | 캐시·성능 | 인기 매물·인기 도서 (`GET /rankings/listings`, `GET /rankings/books`): Redis Sorted Set |
 | 커뮤니티 | 독후감 공감 (`POST`/`DELETE /reviews/{id}/likes`) |
@@ -632,3 +685,5 @@ ON_SALE ──예약──▶ RESERVED ──완료──▶ SOLD
 | 2026-11-15 | v2 채팅(REST + STOMP), 알림(SSE), 거래 후기, 내 서재 추가. 거래 방법 선택, 판매자가 채팅 상대 중 예약자 선택 |
 | 2026-11-15 | 공통 에러 코드 추가 (`RESOURCE_NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNSUPPORTED_MEDIA_TYPE`) |
 | 2026-11-17 | 회원가입 규칙 구체화: 이메일 소문자 정규화, 닉네임 허용 문자, `Location` 헤더, 탈퇴 회원 기준 중복 |
+| 2026-11-17 | v2.1 가입 전 이메일 인증 추가(코드 발송·확인 API, 429 상태 코드, 에러 코드 6개). 회원가입 요청을 `email` → `signupToken`으로 변경. 비밀번호를 ASCII로 제한(BCrypt 72바이트), 이메일 앞뒤 공백 제거. 이후 추가할 API에 소셜 로그인 |
+| 2026-11-18 | 인증 코드 발송: IP당 요청 제한(1시간 20회, `EMAIL_VERIFICATION_IP_LIMIT`) 추가, 가입 여부 노출(`409 DUPLICATE_EMAIL`)을 감수한 위험으로 명시. 코드 확인은 동시 요청에도 토큰 하나만 발급 |

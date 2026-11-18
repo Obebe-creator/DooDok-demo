@@ -21,10 +21,12 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailVerificationService emailVerificationService;
 
     @Transactional
     public SignupResponse signup(SignupRequest request) {
-        String email = request.email(); // SignupRequest에서 이미 정규화되어 있다.
+        // 요청 본문의 이메일이 아니라, 인증을 마친 이메일을 쓴다.
+        String email = emailVerificationService.getVerifiedEmail(request.signupToken());
 
         // 1차: 대부분의 중복은 여기서 친절한 에러로 걸러진다.
         if (userRepository.existsByEmailAndDeletedAtIsNull(email)) {
@@ -44,6 +46,8 @@ public class AuthService {
             throw toDuplicateException(e);
         }
 
+        // 가입에 성공했을 때만 토큰을 지운다. (닉네임 중복 등으로 실패하면 같은 토큰으로 다시 시도할 수 있다)
+        emailVerificationService.consumeSignupToken(request.signupToken());
         return SignupResponse.from(user);
     }
 
