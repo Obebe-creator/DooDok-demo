@@ -14,6 +14,7 @@
 | 거래 | `listings`, `listing_images`, `transactions`, `trade_reviews` | 판매글, 사진, 거래, 거래 후기 |
 | 소통 | `chat_rooms`, `chat_messages`, `notifications` | 1:1 채팅, 알림 |
 | AI | `book_embeddings`, `review_embeddings` | 추천용 벡터 |
+| (테이블 밖) | Redis | 이메일 인증 코드, signupToken, 요청 횟수 제한 (4절 참고) |
 
 중심은 **`books`**다. 같은 책의 판매글, 독후감, 서재 항목이 모두 하나의 `books` 행에 모이고, 추천·시세·입고 알림이 여기서 출발한다.
 
@@ -312,8 +313,8 @@ CREATE TABLE users (
     CONSTRAINT ck_users_role CHECK (role IN ('USER', 'ADMIN'))
 );
 
--- 탈퇴(소프트 삭제)한 회원은 제외하고 유니크를 건다.
--- 인덱스 이름은 AuthService에서 중복 종류(이메일/닉네임)를 구분하는 데 쓰므로 바꾸지 않는다.
+-- 탈퇴(소프트 삭제)한 회원은 제외하고 유니크를 건다. 탈퇴 후 같은 이메일·닉네임으로 다시 가입할 수 있다.
+-- 인덱스 이름은 AuthService에서 중복 종류를 구분하는 데 쓰므로 바꾸지 않는다.
 CREATE UNIQUE INDEX uk_users_email ON users (email) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX uk_users_nickname ON users (nickname) WHERE deleted_at IS NULL;
 ```
@@ -394,3 +395,4 @@ CREATE UNIQUE INDEX uk_users_nickname ON users (nickname) WHERE deleted_at IS NU
 | 2026-11-15 | v2 채팅·알림·거래 후기·내 서재 추가. 거래 방법(직거래/택배) 선택, 판매자가 채팅 상대 중 예약자 선택 |
 | 2026-11-17 | v2.1 `users` 구현(`V2__create_users.sql`). 이메일·닉네임 유니크를 탈퇴 회원 제외 부분 인덱스로 변경, 이메일 소문자 저장. 다이어그램에 컬럼 길이·규칙 표시, 4절 구현 현황(DDL) 추가 |
 | 2026-11-17 | v2.2 가입 전 이메일 인증 규칙과 Redis 키 구조 추가. 이후 추가할 테이블에 `user_social_accounts`, 소셜 로그인 때 `password_hash` nullable 변경 예정 |
+| 2026-11-18 | Redis 키에 IP별 요청 횟수 추가, 카운터는 Lua로 원자 처리. 4절 DDL을 V2 파일과 글자 그대로 맞춤. 1절 전체 구조에 Redis 표시 |
