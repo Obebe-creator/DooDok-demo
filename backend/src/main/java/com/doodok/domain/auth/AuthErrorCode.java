@@ -9,6 +9,9 @@ import org.springframework.http.HttpStatus;
 @RequiredArgsConstructor
 public enum AuthErrorCode implements ErrorCode {
 
+    INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."),
+    INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "리프레시 토큰이 만료되었거나 올바르지 않습니다."),
+    LOGIN_ATTEMPTS_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "로그인 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
     EMAIL_VERIFICATION_TOO_FREQUENT(HttpStatus.TOO_MANY_REQUESTS, "인증 코드는 1분에 한 번만 요청할 수 있습니다."),
     EMAIL_VERIFICATION_DAILY_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "오늘 인증 코드 요청 횟수를 모두 사용했습니다. 내일 다시 시도해 주세요."),
     EMAIL_VERIFICATION_IP_LIMIT(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),

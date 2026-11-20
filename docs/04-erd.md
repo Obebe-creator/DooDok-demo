@@ -322,6 +322,9 @@ CREATE UNIQUE INDEX uk_users_nickname ON users (nickname) WHERE deleted_at IS NU
 **JPA 매핑**: `domain/user/User.java` (`BaseTimeEntity` 상속으로 `created_at`, `updated_at` 자동 기록). `ddl-auto: validate`라서 엔티티와 이 DDL이 다르면 앱이 시작되지 않는다.
 
 ### 테이블 밖 저장소 (Redis)
+로그인 시도 제한은 `auth:login:account:{sha256(normalizedEmail)}`(10회)과
+`auth:login:ip:{sha256(ip)}`(50회)를 사용한다. 카운터 증가와 최초 15분 TTL 설정은 Lua로 원자 처리한다.
+
 몇 분만 필요한 데이터는 테이블 대신 Redis에 TTL을 걸어 저장한다. 만료되면 자동으로 지워져 정리 작업이 필요 없다. (`domain/auth/EmailVerificationService`)
 횟수 카운터는 `INCR`과 첫 `EXPIRE`를 Lua 스크립트로 묶어, TTL 없는 카운터가 남지 않게 한다.
 

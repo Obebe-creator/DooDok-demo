@@ -192,13 +192,17 @@
 { "accessToken": "eyJ...", "expiresIn": 1800, "user": { "id": 1, "nickname": "책읽는곰" } }
 ```
 - 에러: `401 INVALID_CREDENTIALS` (이메일과 비밀번호 중 무엇이 틀렸는지 구분하지 않는다)
+- 비밀번호가 UTF-8 기준 72바이트를 넘으면 해시 비교 없이 같은 에러를 반환한다.
+- Redis에서 15분 동안 정규화된 계정당 10회, 요청 IP당 50회로 제한한다. 성공·실패 모두 집계하며 초과 시 `429 LOGIN_ATTEMPTS_EXCEEDED`를 반환한다.
 
 #### POST `/auth/refresh` 토큰 재발급
 - 쿠키의 Refresh Token으로 새 Access Token을 발급하고, Refresh Token도 새로 바꾼다(rotation). 사용한 토큰은 폐기한다.
+- Refresh Token은 발급 시점부터 14일간 유효하다.
 - 에러: `401 INVALID_REFRESH_TOKEN`
 
 #### POST `/auth/logout` 로그아웃
 - Refresh Token을 폐기하고 쿠키를 삭제한다. `204 No Content`
+- 이미 발급된 Access Token은 만료까지 유효하다.
 
 ### 3-2. 회원
 
@@ -657,6 +661,7 @@ ON_SALE ──예약──▶ RESERVED ──완료──▶ SOLD
 | 429 | `EMAIL_VERIFICATION_TOO_FREQUENT` | 인증 코드 재발송 쿨다운(60초) 중 |
 | 429 | `EMAIL_VERIFICATION_DAILY_LIMIT` | 인증 코드 하루 발송 한도(10회) 초과 |
 | 429 | `EMAIL_VERIFICATION_ATTEMPTS_EXCEEDED` | 인증 코드 입력 5회 초과, 코드 폐기 |
+| 429 | `LOGIN_ATTEMPTS_EXCEEDED` | 15분 동안 계정별 또는 IP별 로그인 시도 한도 초과 |
 | 500 | `INTERNAL_ERROR` | 서버 오류 |
 | 502 | `BOOK_SEARCH_UNAVAILABLE` | 외부 도서 API 오류 |
 
