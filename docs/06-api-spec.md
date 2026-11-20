@@ -76,7 +76,7 @@
 | | POST | `/auth/signup` | 회원가입 (signupToken 필요) | - |
 | | POST | `/auth/login` | 로그인 | - |
 | | POST | `/auth/refresh` | 토큰 재발급 | 쿠키 |
-| | POST | `/auth/logout` | 로그아웃 | O |
+| | POST | `/auth/logout` | 로그아웃 (Refresh 쿠키) | - |
 | 회원 | GET | `/users/me` | 내 정보 | O |
 | | PATCH | `/users/me` | 내 정보 수정 | O |
 | | GET | `/users/{userId}` | 다른 회원 프로필 | - |
@@ -193,7 +193,7 @@
 ```
 - 에러: `401 INVALID_CREDENTIALS` (이메일과 비밀번호 중 무엇이 틀렸는지 구분하지 않는다)
 - 비밀번호가 UTF-8 기준 72바이트를 넘으면 해시 비교 없이 같은 에러를 반환한다.
-- Redis에서 15분 동안 정규화된 계정당 10회, 요청 IP당 50회로 제한한다. 성공·실패 모두 집계하며 초과 시 `429 LOGIN_ATTEMPTS_EXCEEDED`를 반환한다.
+- Redis에서 첫 집계부터 15분 동안 정규화된 계정당 10회, 요청 IP당 50회로 제한한다. 성공·실패 모두 집계하며 초과 시 `429 LOGIN_ATTEMPTS_EXCEEDED`를 반환한다. 계정 한도는 요청 IP와 독립적이므로 제3자의 시도로 소진되면 정상 사용자도 해당 집계 구간이 끝날 때까지 로그인할 수 없다.
 
 #### POST `/auth/refresh` 토큰 재발급
 - 쿠키의 Refresh Token으로 새 Access Token을 발급하고, Refresh Token도 새로 바꾼다(rotation). 사용한 토큰은 폐기한다.
@@ -201,7 +201,7 @@
 - 에러: `401 INVALID_REFRESH_TOKEN`
 
 #### POST `/auth/logout` 로그아웃
-- Refresh Token을 폐기하고 쿠키를 삭제한다. `204 No Content`
+- Refresh 쿠키에 해당하는 토큰을 폐기하고 쿠키를 삭제한다. Access Token이 만료됐거나 없어도 호출할 수 있다. 쿠키가 없거나 이미 폐기돼도 `204 No Content`와 쿠키 만료 헤더를 반환한다.
 - 이미 발급된 Access Token은 만료까지 유효하다.
 
 ### 3-2. 회원

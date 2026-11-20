@@ -11,10 +11,12 @@ import java.security.SecureRandom;
 import java.text.ParseException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.security.authentication.CredentialsExpiredException;
 import org.springframework.stereotype.Component;
 
@@ -26,16 +28,30 @@ public class AccessTokens {
     private final MACSigner signer;
     private final MACVerifier verifier;
 
-    public AccessTokens(@Value("${doodok.auth.jwt-secret:}") String secret) throws JOSEException {
-        byte[] key;
-        if (secret.isBlank()) {
-            key = new byte[32];
-            new SecureRandom().nextBytes(key);
-        } else {
-            key = Base64.getDecoder().decode(secret);
-        }
+    public AccessTokens(@Value("${doodok.auth.jwt-secret:}") String secret, Environment environment)
+            throws JOSEException {
+        byte[] key = signingKey(secret, environment.getActiveProfiles());
         signer = new MACSigner(key);
         verifier = new MACVerifier(key);
+    }
+
+    private static byte[] signingKey(String secret, String[] activeProfiles) {
+        if (secret.isBlank() && activeProfiles.length > 0
+                && Arrays.stream(activeProfiles).allMatch(profile -> profile.equals("local") || profile.equals("test"))) {
+            byte[] key = new byte[32];
+            new SecureRandom().nextBytes(key);
+            return key;
+        }
+        byte[] key;
+        try {
+            key = Base64.getDecoder().decode(secret);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalStateException("JWT_SECRET must be a Base64-encoded key of at least 32 bytes");
+        }
+        if (key.length < 32) {
+            throw new IllegalStateException("JWT_SECRET must be a Base64-encoded key of at least 32 bytes");
+        }
+        return key;
     }
 
     public String issue(Long userId) {
