@@ -33,7 +33,8 @@ public class SecurityConfig {
                 paths.matcher(HttpMethod.POST, "/api/auth/email-verifications/confirm"),
                 paths.matcher(HttpMethod.POST, "/api/auth/signup"),
                 paths.matcher(HttpMethod.POST, "/api/auth/login"),
-                paths.matcher(HttpMethod.POST, "/api/auth/refresh"));
+                paths.matcher(HttpMethod.POST, "/api/auth/refresh"),
+                paths.matcher(HttpMethod.POST, "/api/auth/logout"));
         http
                 .csrf(csrf -> csrf.disable())
                 .httpBasic(basic -> basic.disable())

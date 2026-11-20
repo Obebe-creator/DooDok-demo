@@ -53,7 +53,8 @@ docker compose up -d
 ### 2. 백엔드 (http://localhost:8080)
 ```bash
 cd backend
-./gradlew bootRun        # Windows: gradlew.bat bootRun
+./gradlew bootRun --args='--spring.profiles.active=local'
+# Windows: gradlew.bat bootRun --args="--spring.profiles.active=local"
 ```
 헬스체크: `GET http://localhost:8080/actuator/health`
 
@@ -62,9 +63,10 @@ cd backend
 ./gradlew test
 ```
 
-배포 환경에서는 `JWT_SECRET`에 최소 32바이트의 랜덤 키를 Base64로 인코딩해 설정한다.
-설정하지 않으면 실행할 때마다 새 키가 생성되어 재시작 시 기존 Access Token이 무효화된다.
+배포할 때 모든 백엔드 인스턴스에 동일한 `JWT_SECRET`을 주입한다. `openssl rand -base64 32`로 키를 만들 수 있으며, 누락되거나 올바른 Base64 키가 아니면 시작에 실패한다. 활성 프로필이 `local` 또는 `test`로만 구성되면 빈 키 대신 실행마다 임의 키를 만들 수 있다.
 리프레시 쿠키는 기본적으로 `Secure`이며, 로컬 HTTP 테스트에서만 필요에 따라 `AUTH_SECURE_COOKIE=false`로 설정한다.
+
+리버스 프록시 뒤에서는 `FORWARD_HEADERS_STRATEGY=native`와 `TRUSTED_PROXY_PATTERN`을 함께 설정한다. 정규식은 백엔드에 연결하는 신뢰된 프록시 주소만 일치시킨다. 신뢰 경계의 첫 프록시는 외부 요청의 `X-Forwarded-For`를 실제 연결 주소로 덮어쓰고, 백엔드는 프록시를 통해서만 접근하도록 구성한다. 배포 후 서로 다른 클라이언트가 각자 IP 한도로 집계되는지 확인한다.
 
 ### 3. 프런트엔드 (http://localhost:3000)
 ```bash
