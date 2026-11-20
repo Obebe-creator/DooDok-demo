@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -148,10 +149,14 @@ class LoginApiTest {
         mvc.perform(post("/api/auth/logout").cookie(original)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + expired.serialize()))
                 .andExpect(status().isNoContent())
-                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")));
+                .andExpect(cookie().maxAge("refreshToken", 0));
         refresh(original).andExpect(status().isUnauthorized());
-        mvc.perform(post("/api/auth/logout").cookie(original)).andExpect(status().isNoContent());
-        mvc.perform(post("/api/auth/logout")).andExpect(status().isNoContent());
+        mvc.perform(post("/api/auth/logout").cookie(original))
+                .andExpect(status().isNoContent())
+                .andExpect(cookie().maxAge("refreshToken", 0));
+        mvc.perform(post("/api/auth/logout"))
+                .andExpect(status().isNoContent())
+                .andExpect(cookie().maxAge("refreshToken", 0));
     }
 
     @Test
