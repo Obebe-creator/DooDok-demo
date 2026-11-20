@@ -1,9 +1,12 @@
 package com.doodok.global.security;
 
+import com.doodok.global.exception.BusinessException;
+import com.doodok.global.exception.CommonErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.CredentialsExpiredException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
@@ -27,7 +30,9 @@ public class SecurityExceptionHandler implements AuthenticationEntryPoint, Acces
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response,
             AuthenticationException authException) {
-        handlerExceptionResolver.resolveException(request, response, null, authException);
+        Exception exception = authException instanceof CredentialsExpiredException
+                ? new BusinessException(CommonErrorCode.TOKEN_EXPIRED) : authException;
+        handlerExceptionResolver.resolveException(request, response, null, exception);
     }
 
     /** 인증은 됐지만 권한이 없음 → 403 */

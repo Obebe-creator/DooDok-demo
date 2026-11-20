@@ -4,3 +4,7 @@
 spring:
   jpa:
     show-sql: false
+
+doodok:
+  auth:
+    jwt-secret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="

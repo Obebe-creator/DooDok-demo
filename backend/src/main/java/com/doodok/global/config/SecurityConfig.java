@@ -14,6 +14,9 @@ import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 
 @Configuration
 @RequiredArgsConstructor
@@ -23,24 +26,27 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, AccessTokens tokens, UserRepository users) throws Exception {
+        var paths = PathPatternRequestMatcher.withDefaults();
+        RequestMatcher publicRequests = new OrRequestMatcher(
+                paths.matcher("/actuator/health"),
+                paths.matcher(HttpMethod.POST, "/api/auth/email-verifications"),
+                paths.matcher(HttpMethod.POST, "/api/auth/email-verifications/confirm"),
+                paths.matcher(HttpMethod.POST, "/api/auth/signup"),
+                paths.matcher(HttpMethod.POST, "/api/auth/login"),
+                paths.matcher(HttpMethod.POST, "/api/auth/refresh"));
         http
                 .csrf(csrf -> csrf.disable())
                 .httpBasic(basic -> basic.disable())
                 .formLogin(form -> form.disable())
                 .logout(logout -> logout.disable())
-                .addFilterBefore(new JwtAuthenticationFilter(tokens, users), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(new JwtAuthenticationFilter(tokens, users, securityExceptionHandler, publicRequests),
+                        UsernamePasswordAuthenticationFilter.class)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(securityExceptionHandler)
                         .accessDeniedHandler(securityExceptionHandler))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health").permitAll()
-                        .requestMatchers(HttpMethod.POST,
-                                "/api/auth/email-verifications",
-                                "/api/auth/email-verifications/confirm",
-                                "/api/auth/signup",
-                                "/api/auth/login",
-                                "/api/auth/refresh").permitAll()
+                        .requestMatchers(publicRequests).permitAll()
                         .anyRequest().authenticated());
 
         return http.build();

@@ -15,6 +15,7 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.CredentialsExpiredException;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -57,11 +58,14 @@ public class AccessTokens {
                 return Optional.empty();
             }
             JWTClaimsSet claims = jwt.getJWTClaimsSet();
-            if (!ISSUER.equals(claims.getIssuer()) || claims.getExpirationTime() == null
-                    || !claims.getExpirationTime().toInstant().isAfter(Instant.now())) {
+            if (!ISSUER.equals(claims.getIssuer()) || claims.getExpirationTime() == null) {
                 return Optional.empty();
             }
-            return Optional.of(Long.valueOf(claims.getSubject()));
+            Long userId = Long.valueOf(claims.getSubject());
+            if (!claims.getExpirationTime().toInstant().isAfter(Instant.now())) {
+                throw new CredentialsExpiredException("Access token expired");
+            }
+            return Optional.of(userId);
         } catch (JOSEException | ParseException | NumberFormatException exception) {
             return Optional.empty();
         }
