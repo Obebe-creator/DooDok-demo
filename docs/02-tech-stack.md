@@ -15,6 +15,7 @@
 | 메일 | Spring Mail (SMTP) | 로컬은 Mailpit(실제 발송 없이 웹에서 확인), 운영은 AWS SES. SES도 SMTP를 지원해 설정만 바꿔 전환한다 |
 | AI | Spring AI + Gemini | 별도 Python 서버 없이 백엔드 안에서 임베딩·LLM 호출 |
 | 테스트 | JUnit 5, Mockito, Testcontainers | 통합 테스트를 운영과 같은 PostgreSQL(pgvector)·Redis 위에서 실행, 동시성 재현. 메일은 가짜 발송기로 받아 본문의 코드를 검증 |
+| API 문서 | springdoc-openapi (OpenAPI 3, Swagger UI) | 코드에서 API 문서를 생성해 프런트 타입 생성의 기준으로 쓴다. `local` 프로필에서만 기본 활성화 |
 | 인프라 | Docker, GitHub Actions, AWS EC2·S3 | 컨테이너, CI/CD 경험 |
 
 ## 저장소 구조
@@ -22,5 +23,11 @@ FE와 BE를 한 저장소(모노레포)에 둔다. 1인 프로젝트에서 관�
 CI는 `paths` 필터로 바뀐 영역만 실행한다.
 
 ## FE/BE 간 API 계약
-언어가 달라 타입을 직접 공유할 수 없으므로, Spring에서 OpenAPI 스펙을 생성하고
-프런트에서 `openapi-typescript`로 타입을 자동 생성한다. (예정)
+언어가 달라 타입을 직접 공유할 수 없으므로, Spring에서 springdoc으로 OpenAPI 스펙(`/v3/api-docs`)을 생성하고
+프런트에서 `openapi-typescript`로 타입을 자동 생성한다. (스펙 생성 완료, 타입 생성은 프런트 연동에서 진행)
+
+## FE/BE 호출 방식
+브라우저가 Spring API를 **직접 호출**한다. (Next.js 프록시를 거치지 않음)
+- CORS로 프런트 출처만 정확히 허용하고, 인증 요청은 `credentials: 'include'`로 Refresh 쿠키를 주고받는다.
+- Refresh 쿠키가 `SameSite=Strict`이므로 운영에서는 프런트와 API를 같은 사이트(`doodok.xyz` / `api.doodok.xyz`)에 둔다.
+- 결정 이유와 대안은 [ADR 0004](adr/0004-direct-api-calls.md)에 정리했다.

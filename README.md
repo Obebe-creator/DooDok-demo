@@ -42,6 +42,7 @@ DooDok-demo/
 cp .env.example .env
 docker compose up -d
 ```
+루트 `.env`는 **docker compose만** 읽는다. 백엔드(`bootRun`)는 이 파일을 자동으로 읽지 않고, 셸 환경 변수와 `application.yml`의 기본값을 쓴다. 로컬 기본값은 docker compose 설정과 같으므로 로컬 개발에서는 따로 설정할 필요가 없다. (값을 바꾸는 방법은 아래 2번 참고)
 | 서비스 | 주소 | 용도 |
 |---|---|---|
 | PostgreSQL | `localhost:5432` | DB (테이블은 앱 시작 시 Flyway가 생성) |
@@ -58,9 +59,31 @@ cd backend
 ```
 헬스체크: `GET http://localhost:8080/actuator/health`
 
+**환경 변수 바꾸기**: 기본값과 다른 값을 쓰려면 `bootRun` 전에 같은 터미널에서 셸 환경 변수로 설정한다.
+```bash
+# Git Bash: 한 값만 바꿀 때
+export CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+./gradlew bootRun --args='--spring.profiles.active=local'
+
+# Git Bash: 루트 .env의 값을 한꺼번에 불러올 때 (backend 폴더 기준)
+set -a; source ../.env; set +a
+./gradlew bootRun --args='--spring.profiles.active=local'
+```
+```powershell
+# PowerShell
+$env:CORS_ALLOWED_ORIGINS = "http://localhost:3000"
+.\gradlew.bat bootRun --args="--spring.profiles.active=local"
+```
+설정은 그 터미널에서만 유지된다. 배포 환경에서는 컨테이너·서버의 환경 변수로 주입한다.
+
 `local` 프로필에서는 [OpenAPI JSON](http://localhost:8080/v3/api-docs)과 [Swagger UI](http://localhost:8080/swagger-ui.html)를 사용할 수 있다. 다른 프로필에서는 문서가 기본 비활성화되며, `API_DOCS_ENABLED`로 두 경로를 함께 제어한다.
 
-브라우저는 Spring API를 직접 호출한다. `local` 프로필의 기본 허용 Origin은 `http://localhost:3000`이다. 로컬 브라우저의 프런트와 API 주소에는 모두 `localhost`를 사용한다. 배포할 때는 `CORS_ALLOWED_ORIGINS=https://doodok.xyz`처럼 프런트 Origin을 설정한다. 여러 Origin은 쉼표로 구분한다. 인증 호출에서 Refresh 쿠키를 수신하고 보내려면 `credentials: 'include'`를 사용한다.
+브라우저는 Spring API를 직접 호출한다. `local` 프로필의 기본 허용 Origin은 `http://localhost:3000`이다. 로컬 브라우저의 프런트와 API 주소에는 모두 `localhost`를 사용한다. (`localhost`와 `127.0.0.1`을 섞으면 서로 다른 사이트가 되어 Refresh 쿠키가 전달되지 않는다) 배포할 때는 `CORS_ALLOWED_ORIGINS=https://doodok.xyz`처럼 프런트 Origin을 설정한다. 여러 Origin은 쉼표로 구분한다. 인증 호출에서 Refresh 쿠키를 수신하고 보내려면 `credentials: 'include'`를 사용한다.
+
+**배포 조건: 프런트와 API는 같은 사이트에 둔다.** Refresh 쿠키는 `SameSite=Strict`라서, `credentials: 'include'`를 써도 **다른 사이트에서 보낸 요청에는 쿠키가 전송되지 않는다.**
+- 가능: 프런트 `https://doodok.xyz`, API `https://api.doodok.xyz` (출처는 다르지만 등록 도메인이 같아 같은 사이트)
+- 불가: 프런트를 `*.vercel.app` 같은 호스팅 기본 주소에 두고 API는 `api.doodok.xyz`에 두는 구성 (서로 다른 사이트라 재발급·로그아웃이 동작하지 않음). 호스팅 서비스를 쓰더라도 프런트에 같은 도메인의 커스텀 도메인을 연결한다.
+- 같은 사이트에 둘 수 없다면 쿠키 정책을 완화하지 말고, 프런트 주소의 `/api/*`를 백엔드로 전달하는 리버스 프록시 방식으로 바꾼다.
 
 테스트 (Docker 실행 필요, Testcontainers가 PostgreSQL·Redis를 띄움):
 ```bash
@@ -78,6 +101,7 @@ cd frontend
 npm install
 npm run dev
 ```
+Next.js는 루트 `.env`가 아니라 `frontend/` 폴더의 `.env.local`을 읽는다. API 주소를 바꾸려면 `frontend/.env.local`에 `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080`처럼 적는다.
 
 ## 문서
 - [기능 명세](docs/01-feature-spec.md)
