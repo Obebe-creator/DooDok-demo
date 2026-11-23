@@ -34,7 +34,7 @@
 - [ ] EC2 배포 (CD)
 - [ ] S3 이미지 업로드
 - [ ] 운영 메일 발송 (AWS SES 설정, 샌드박스 해제 신청)
-- [ ] 프록시(Nginx·로드밸런서) 뒤 실제 클라이언트 IP 받기 (`server.forward-headers-strategy`)
+- [ ] 배포 프록시에 실제 클라이언트 IP 전달 설정 적용 및 IP별 로그인 제한 확인 ([배포 설정](../README.md#2-백엔드-httplocalhost8080))
 
 ## 3. 거래 · 채팅 · 알림
 - [ ] 1:1 채팅 (REST 이력 + WebSocket/STOMP 실시간)
