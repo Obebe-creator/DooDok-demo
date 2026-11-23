@@ -31,6 +31,12 @@ class JwtAuthenticationApiTest {
     private String secret;
 
     @Test
+    void apiDocumentationIsDisabledByDefault() throws Exception {
+        mockMvc.perform(get("/v3/api-docs")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/swagger-ui.html")).andExpect(status().isNotFound());
+    }
+
+    @Test
     void expiredAccessTokenReturnsTokenExpiredOnProtectedRoute() throws Exception {
         mockMvc.perform(get("/api/users/me").header(HttpHeaders.AUTHORIZATION,
                         expiredBearer("doodok", Base64.getDecoder().decode(secret))))

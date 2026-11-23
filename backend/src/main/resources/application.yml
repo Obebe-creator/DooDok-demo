@@ -42,7 +42,16 @@ spring:
           timeout: 5000
           writetimeout: 5000
 
+springdoc:
+  paths-to-match: /api/**
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:false}
+  swagger-ui:
+    enabled: ${API_DOCS_ENABLED:false}
+
 doodok:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
   auth:
     jwt-secret: ${JWT_SECRET:}
     secure-cookie: ${AUTH_SECURE_COOKIE:true}
@@ -72,3 +81,13 @@ spring:
       on-profile: local
   jpa:
     show-sql: true
+
+springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:true}
+  swagger-ui:
+    enabled: ${API_DOCS_ENABLED:true}
+
+doodok:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
