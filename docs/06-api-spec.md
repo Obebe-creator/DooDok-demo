@@ -1,7 +1,8 @@
 # API 명세 (초안)
 
-> 두독(DooDok) REST API 초안 v2.1
+> 두독(DooDok) REST API 초안 v2.2
 > MVP 기능만 정의했다. 구현하면서 확정되는 내용은 Swagger(OpenAPI) 문서가 최종 기준이 되고, 이 문서는 설계 의도를 남기는 용도로 쓴다.
+> 로컬 실행 시 OpenAPI JSON은 `http://localhost:8080/v3/api-docs`, Swagger UI는 `http://localhost:8080/swagger-ui.html`에서 볼 수 있다. (`local` 프로필)
 
 ## 1. 공통 규칙
 
@@ -15,7 +16,14 @@
 - 로그인하면 **Access Token은 응답 본문**, **Refresh Token은 HttpOnly 쿠키**로 내려준다.
   - Access Token은 짧게(30분), 요청 헤더에 담는다: `Authorization: Bearer {accessToken}`
   - Refresh Token은 JS에서 읽을 수 없게 해 XSS로 탈취되는 것을 막는다.
+- Access Token이 만료되면 보호된 API는 `401 TOKEN_EXPIRED`를 반환한다. 프런트는 이 코드를 받으면 `POST /auth/refresh`로 재발급한 뒤 원래 요청을 다시 보낸다. 그 밖의 `401`(`UNAUTHORIZED`)은 로그인 화면으로 보낸다.
 - 표의 **인증** 열: `-` 불필요, `O` 필요, `△` 선택 (로그인하면 추가 정보 제공)
+
+### 브라우저 호출 (CORS · 쿠키)
+- 브라우저는 API를 직접 호출한다. 허용된 프런트 출처(`CORS_ALLOWED_ORIGINS`)만 CORS를 통과하고, 그 밖의 출처는 거부된다. CORS는 `/api/**`에 적용된다.
+- Refresh 쿠키를 주고받는 요청(`/auth/login`, `/auth/refresh`, `/auth/logout`)은 `credentials: 'include'`로 보낸다.
+- Refresh 쿠키는 `HttpOnly; Secure; SameSite=Strict; Path=/api/auth`다. **다른 사이트에서 보낸 요청에는 전송되지 않으므로** 프런트와 API를 같은 사이트(`https://doodok.xyz` / `https://api.doodok.xyz`)에 둔다.
+- 허용 헤더는 `Authorization`, `Content-Type`이고, 프런트가 읽을 수 있는 응답 헤더는 `Location`이다.
 
 ### 성공 응답
 래퍼 없이 리소스를 그대로 반환한다. HTTP 상태 코드로 성공 여부를 이미 알 수 있어서 `success: true` 같은 필드는 두지 않는다.
@@ -693,3 +701,5 @@ ON_SALE ──예약──▶ RESERVED ──완료──▶ SOLD
 | 2026-11-17 | 회원가입 규칙 구체화: 이메일 소문자 정규화, 닉네임 허용 문자, `Location` 헤더, 탈퇴 회원 기준 중복 |
 | 2026-11-17 | v2.1 가입 전 이메일 인증 추가(코드 발송·확인 API, 429 상태 코드, 에러 코드 6개). 회원가입 요청을 `email` → `signupToken`으로 변경. 비밀번호를 ASCII로 제한(BCrypt 72바이트), 이메일 앞뒤 공백 제거. 이후 추가할 API에 소셜 로그인 |
 | 2026-11-18 | 인증 코드 발송: IP당 요청 제한(1시간 20회, `EMAIL_VERIFICATION_IP_LIMIT`) 추가, 가입 여부 노출(`409 DUPLICATE_EMAIL`)을 감수한 위험으로 명시. 코드 확인은 동시 요청에도 토큰 하나만 발급 |
+| 2026-11-20 | 로그인·토큰 재발급·로그아웃 구현 반영: Refresh Token 14일, 재발급 시 교체, 로그아웃은 Access Token 없이도 호출 가능, 로그인 시도 제한(IP 50회·계정 10회/15분, `LOGIN_ATTEMPTS_EXCEEDED`), 72바이트 초과 비밀번호 처리 |
+| 2026-11-23 | v2.2 OpenAPI 문서 위치, `TOKEN_EXPIRED` 처리 흐름, 브라우저 호출(CORS·쿠키) 규칙 추가 |

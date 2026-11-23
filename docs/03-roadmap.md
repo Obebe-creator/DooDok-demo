@@ -30,6 +30,7 @@
 
 ## 2. 배포 파이프라인
 - [x] CI (GitHub Actions, paths 필터)
+- [ ] 도메인 구매, 프런트 `doodok.xyz` / API `api.doodok.xyz` HTTPS 구성 (Refresh 쿠키가 같은 사이트에서만 전달됨, [ADR 0004](adr/0004-direct-api-calls.md))
 - [ ] backend Dockerfile
 - [ ] EC2 배포 (CD)
 - [ ] S3 이미지 업로드
