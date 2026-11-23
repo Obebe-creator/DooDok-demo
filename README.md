@@ -58,6 +58,10 @@ cd backend
 ```
 헬스체크: `GET http://localhost:8080/actuator/health`
 
+`local` 프로필에서는 [OpenAPI JSON](http://localhost:8080/v3/api-docs)과 [Swagger UI](http://localhost:8080/swagger-ui.html)를 사용할 수 있다. 다른 프로필에서는 문서가 기본 비활성화되며, `API_DOCS_ENABLED`로 두 경로를 함께 제어한다.
+
+브라우저는 Spring API를 직접 호출한다. `local` 프로필의 기본 허용 Origin은 `http://localhost:3000`이다. 로컬 브라우저의 프런트와 API 주소에는 모두 `localhost`를 사용한다. 배포할 때는 `CORS_ALLOWED_ORIGINS=https://doodok.xyz`처럼 프런트 Origin을 설정한다. 여러 Origin은 쉼표로 구분한다. 인증 호출에서 Refresh 쿠키를 수신하고 보내려면 `credentials: 'include'`를 사용한다.
+
 테스트 (Docker 실행 필요, Testcontainers가 PostgreSQL·Redis를 띄움):
 ```bash
 ./gradlew test

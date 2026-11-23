@@ -14,7 +14,7 @@
 - [x] DB 마이그레이션(Flyway) + Testcontainers 테스트 환경
 - [x] 회원가입 (users 테이블, BCrypt, 중복·동시 가입 방지)
 - [x] 가입 전 이메일 인증 (Redis, Mailpit, IP·이메일별 요청 제한)
-- [ ] 로그인 (JWT Access Token + Refresh Token 쿠키, 로그인 시도 제한)
+- [x] 로그인 (JWT Access Token + Refresh Token 쿠키, 로그인 시도 제한)
 - [ ] 소셜 로그인 (구글·카카오, `password_hash` nullable 마이그레이션, 계정 연결)
 - [ ] 외부 도서 API 연동, ISBN 기준 Book 저장
 - [ ] 매물 CRUD + 검색 (QueryDSL), 거래 방법 선택
@@ -23,7 +23,7 @@
 - [ ] 단위 테스트
 
 ## 1-1. 프런트 연동 시작 (로그인 이후)
-- [ ] 백엔드: CORS 설정, OpenAPI(Swagger) 문서 생성
+- [x] 백엔드: CORS 설정, OpenAPI(Swagger) 문서 생성
 - [ ] OpenAPI → TS 타입 자동 생성
 - [ ] 인증 화면: 회원가입(이메일 인증), 로그인, 로그아웃, 토큰 재발급 처리
 - 이후 기능은 백엔드 → 해당 화면 순서로 함께 진행한다.

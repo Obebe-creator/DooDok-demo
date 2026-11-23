@@ -1,5 +1,10 @@
 package com.doodok.domain.auth;
 
+import com.doodok.global.exception.ErrorResponse;
+
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -19,6 +24,11 @@ public class AuthController {
     private final EmailVerificationService emailVerificationService;
 
     /** 인증 코드 발송. 메일은 비동기로 보내므로 202 Accepted */
+    @ApiResponse(responseCode = "202", description = "인증 코드 발송 접수")
+    @ApiResponse(responseCode = "400", description = "요청 검증 실패",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "429", description = "인증 코드 요청 한도 초과",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class)))
     @PostMapping("/email-verifications")
     public ResponseEntity<EmailVerificationResponse> sendEmailVerificationCode(
             @Valid @RequestBody EmailVerificationRequest request, HttpServletRequest httpRequest) {
@@ -29,12 +39,22 @@ public class AuthController {
     }
 
     /** 인증 코드 확인 → signupToken 발급 */
+    @ApiResponse(responseCode = "200", description = "가입 토큰 발급")
+    @ApiResponse(responseCode = "400", description = "요청 검증 실패 또는 인증 코드 불일치·만료",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "429", description = "인증 코드 입력 한도 초과",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class)))
     @PostMapping("/email-verifications/confirm")
     public SignupTokenResponse confirmEmailVerificationCode(
             @Valid @RequestBody EmailVerificationConfirmRequest request) {
         return emailVerificationService.confirm(request.email(), request.code());
     }
 
+    @ApiResponse(responseCode = "201", description = "가입 성공")
+    @ApiResponse(responseCode = "400", description = "요청 검증 실패 또는 가입 토큰 무효",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "409", description = "이메일 또는 닉네임 중복",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class)))
     @PostMapping("/signup")
     public ResponseEntity<SignupResponse> signup(@Valid @RequestBody SignupRequest request) {
         SignupResponse response = authService.signup(request);
