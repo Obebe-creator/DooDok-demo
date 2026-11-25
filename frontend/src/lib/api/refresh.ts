@@ -1,40 +1,43 @@
+import { ApiError } from "./errors";
+import { withSessionLock } from "./session-lock";
 import { tokenStore } from "./token-store";
 import { parse, send } from "./transport";
 import type { TokenResponse } from "./types";
 
-const REFRESH_LOCK = "doodok:refresh-token";
+let inflight: { generation: number; result: Promise<TokenResponse | null> } | undefined;
 
-let inflight: Promise<string | null> | null = null;
+/** 같은 세션의 호출은 진행 중인 재발급을 공유한다. */
+export function refreshAccessToken(): Promise<TokenResponse | null> {
+  const generation = tokenStore.generation();
+  if (inflight?.generation === generation) return inflight.result;
 
-/**
- * Refresh 쿠키로 Access Token을 다시 받는다. 성공하면 새 토큰, 세션이 없으면 null.
- *
- * 서버는 재발급 때마다 Refresh Token을 교체하고 이전 토큰을 지운다.
- * 같은 쿠키로 두 번 요청하면 뒤의 요청은 401이 되어 로그아웃되므로, 재발급이 겹치지 않게 막는다.
- * - 한 탭 안: 진행 중인 재발급 Promise를 함께 기다린다. (StrictMode의 effect 두 번 실행, 동시에 만료된 여러 요청)
- * - 여러 탭: navigator.locks로 순서를 정한다. 뒤의 탭은 앞의 탭이 바꿔 둔 새 쿠키로 요청한다.
- */
-export function refreshAccessToken(): Promise<string | null> {
-  inflight ??= withRefreshLock(requestRefresh).finally(() => {
-    inflight = null;
+  const result = withSessionLock(() => requestRefresh(generation)).finally(() => {
+    if (inflight?.result === result) inflight = undefined;
   });
-  return inflight;
+  inflight = { generation, result };
+  return result;
 }
 
-async function requestRefresh(): Promise<string | null> {
+async function requestRefresh(generation: number): Promise<TokenResponse | null> {
+  if (generation !== tokenStore.generation()) return null;
+
   const response = await send("/api/auth/refresh", { method: "POST" });
   if (response.status === 401) {
-    tokenStore.set(null);
+    const error = await ApiError.from(response);
+    if (generation !== tokenStore.generation()) return null;
+    if (error.code !== "INVALID_REFRESH_TOKEN") throw error;
+    if (tokenStore.get() !== null) tokenStore.replaceSession(null);
     return null;
   }
-  const { accessToken } = await parse<TokenResponse>(response);
-  tokenStore.set(accessToken);
-  return accessToken;
-}
 
-async function withRefreshLock(task: () => Promise<string | null>): Promise<string | null> {
-  if (typeof navigator !== "undefined" && navigator.locks) {
-    return await navigator.locks.request(REFRESH_LOCK, task);
+  const session = await parse<TokenResponse>(response);
+  if (generation !== tokenStore.generation()) return null;
+  const userId = tokenStore.userId();
+  // 다른 탭에서 같은 쿠키로 다른 계정에 로그인했을 수 있다.
+  if (userId !== null && userId !== session.user.id) {
+    tokenStore.replaceSession(null);
+    return null;
   }
-  return task();
+  tokenStore.set(session.accessToken, session.user.id);
+  return session;
 }

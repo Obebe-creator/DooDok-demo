@@ -1,5 +1,5 @@
 import { apiBaseUrl } from "./config";
-import { ApiError, NETWORK_ERROR } from "./errors";
+import { ApiError, NETWORK_ERROR, UNKNOWN_ERROR } from "./errors";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -35,6 +35,10 @@ export async function send(path: string, { method = "GET", body, token }: SendOp
 /** 2xx면 본문을 JSON으로 읽고(본문이 없으면 undefined), 아니면 ApiError를 던진다. */
 export async function parse<T>(response: Response): Promise<T> {
   if (!response.ok) throw await ApiError.from(response);
-  const text = await response.text();
-  return (text ? JSON.parse(text) : undefined) as T;
+  try {
+    const text = await response.text();
+    return (text ? JSON.parse(text) : undefined) as T;
+  } catch (cause) {
+    throw new ApiError(response.status, UNKNOWN_ERROR, "서버 응답을 읽을 수 없습니다.", [], { cause });
+  }
 }

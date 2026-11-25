@@ -16,17 +16,18 @@ export interface RequestOptions {
 export async function request<T>(path: string, { method, body, auth = false }: RequestOptions = {}): Promise<T> {
   if (!auth) return parse<T>(await send(path, { method, body }));
 
+  const generation = tokenStore.generation();
   const usedToken = tokenStore.get();
   const response = await send(path, { method, body, token: usedToken });
   if (response.status !== 401) return parse<T>(response);
 
   const error = await ApiError.from(response);
-  if (error.code !== TOKEN_EXPIRED) throw error;
+  if (error.code !== TOKEN_EXPIRED || generation !== tokenStore.generation()) throw error;
 
   // 기다리는 사이 다른 요청이 이미 재발급했다면 그 토큰으로 바로 다시 보낸다.
   const current = tokenStore.get();
-  const token = current && current !== usedToken ? current : await refreshAccessToken();
-  if (!token) throw error;
+  const token = current && current !== usedToken ? current : (await refreshAccessToken())?.accessToken;
+  if (!token || generation !== tokenStore.generation()) throw error;
 
   // 다시 보낸 요청도 실패하면 그대로 던진다. 재발급을 반복하지 않는다.
   return parse<T>(await send(path, { method, body, token }));

@@ -101,6 +101,26 @@ describe("request", () => {
     await expect(request("/api/users/me")).rejects.toMatchObject({ status: 502, code: UNKNOWN_ERROR });
   });
 
+  it.each([["invalid"], [null], [[null]], [[{ field: "nickname", reason: 42 }]]])(
+    "잘못된 errors(%j)는 UNKNOWN_ERROR로 변환한다",
+    async (errors) => {
+      mockFetch(() => json(400, { code: "INVALID_INPUT", message: "invalid", errors }));
+      await expect(request("/api/auth/signup")).rejects.toMatchObject({
+        status: 400, code: UNKNOWN_ERROR, fieldErrors: [],
+      });
+    },
+  );
+
+  it("errors가 없으면 빈 배열을 반환한다", async () => {
+    mockFetch(() => json(400, { code: "INVALID_INPUT", message: "invalid" }));
+    await expect(request("/api/auth/signup")).rejects.toMatchObject({ code: "INVALID_INPUT", fieldErrors: [] });
+  });
+
+  it("200 응답의 JSON이 잘못되면 HTTP 상태를 보존한 ApiError로 변환한다", async () => {
+    mockFetch(() => new Response("<html>Gateway</html>", { status: 200 }));
+    await expect(request("/api/users/me")).rejects.toMatchObject({ status: 200, code: UNKNOWN_ERROR });
+  });
+
   it("서버에 닿지 못하면 NETWORK_ERROR", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))));
 
@@ -183,7 +203,7 @@ describe("Access Token 만료", () => {
     expect(pathsOf(fetchMock)).toEqual(["/api/users/me"]);
   });
 
-  it("브라우저가 Web Locks를 지원하면 잠금 안에서 재발급한다", async () => {
+  it("브라우저가 Web Locks를 지원하면 쿠키를 바꾸는 요청들이 같은 잠금을 사용한다", async () => {
     const lockNames: string[] = [];
     vi.stubGlobal("navigator", {
       locks: {
@@ -193,10 +213,12 @@ describe("Access Token 만료", () => {
         },
       },
     });
-    mockFetch(() => refreshed("access-2"));
+    mockFetch((path) => path === "/api/auth/logout" ? new Response(null, { status: 204 }) : refreshed("access-2"));
 
-    await expect(authApi.restoreSession()).resolves.toBe("access-2");
-    expect(lockNames).toEqual(["doodok:refresh-token"]);
+    await authApi.login("reader@doodok.xyz", "password1!");
+    await expect(authApi.restoreSession()).resolves.toMatchObject({ accessToken: "access-2" });
+    await authApi.logout();
+    expect(lockNames).toEqual(Array(3).fill("doodok:refresh-token"));
   });
 });
 
@@ -209,11 +231,19 @@ describe("authApi", () => {
     expect(tokenStore.get()).toBe("access-1");
   });
 
-  it("로그아웃 요청이 실패해도 토큰을 지운다", async () => {
+  it("로그아웃 요청이 실패하면 기존 토큰을 유지한다", async () => {
     tokenStore.set("access-1");
     vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))));
 
     await expect(authApi.logout()).rejects.toBeInstanceOf(ApiError);
+    expect(tokenStore.get()).toBe("access-1");
+  });
+
+  it("로그아웃이 성공하면 토큰을 지운다", async () => {
+    tokenStore.set("access-1");
+    mockFetch(() => new Response(null, { status: 204 }));
+
+    await authApi.logout();
     expect(tokenStore.get()).toBeNull();
   });
 
@@ -221,5 +251,122 @@ describe("authApi", () => {
     mockFetch(() => json(401, { code: "INVALID_REFRESH_TOKEN", message: "다시 로그인해 주세요.", errors: [] }));
 
     await expect(authApi.restoreSession()).resolves.toBeNull();
+  });
+
+  it("형식이 다른 재발급 401은 세션 부재로 처리하지 않는다", async () => {
+    tokenStore.set("access-1");
+    mockFetch(() => new Response("Unauthorized", { status: 401 }));
+
+    await expect(authApi.restoreSession()).rejects.toMatchObject({ status: 401, code: UNKNOWN_ERROR });
+    expect(tokenStore.get()).toBe("access-1");
+  });
+});
+
+describe("세션 전환", () => {
+  it("다른 탭에서 계정이 바뀌었으면 재발급 결과로 기존 요청을 재시도하지 않는다", async () => {
+    tokenStore.replaceSession("account-a", 1);
+    const fetchMock = mockFetch((path) => path === "/api/auth/refresh"
+      ? json(200, { accessToken: "account-b", expiresIn: 1800, user: { id: 2, nickname: "다른 독자" } })
+      : tokenExpired());
+
+    await expect(request("/api/listings", { method: "POST", auth: true })).rejects.toMatchObject({ code: "TOKEN_EXPIRED" });
+    expect(pathsOf(fetchMock)).toEqual(["/api/listings", "/api/auth/refresh"]);
+    expect(tokenStore.get()).toBeNull();
+  });
+
+  it("계정 전환 뒤 이전 계정의 만료된 쓰기 요청을 재시도하지 않는다", async () => {
+    tokenStore.replaceSession("account-a");
+    const write = Promise.withResolvers<Response>();
+    const fetchMock = mockFetch((path) => {
+      if (path === "/api/auth/login") return refreshed("account-b");
+      if (path === "/api/auth/logout") return new Response(null, { status: 204 });
+      return write.promise;
+    });
+
+    const oldRequest = request("/api/listings", { method: "POST", auth: true, body: { price: 1000 } });
+    const rejection = expect(oldRequest).rejects.toMatchObject({ code: "TOKEN_EXPIRED" });
+    await authApi.logout();
+    await authApi.login("second@doodok.xyz", "password1!");
+    write.resolve(tokenExpired());
+    await rejection;
+
+    expect(pathsOf(fetchMock)).toEqual(["/api/listings", "/api/auth/logout", "/api/auth/login"]);
+    expect(tokenStore.get()).toBe("account-b");
+  });
+
+  it("재발급이 쿠키를 교체한 뒤 로그아웃하고 이후 복원해도 세션이 없다", async () => {
+    vi.stubGlobal("navigator", {});
+    tokenStore.replaceSession("access-1");
+    const refreshStarted = Promise.withResolvers<void>();
+    const finishRefresh = Promise.withResolvers<void>();
+    let cookie: string | null = "cookie-1";
+    const fetchMock = mockFetch(async (path) => {
+      if (path === "/api/auth/logout") {
+        expect(cookie).toBe("cookie-2");
+        cookie = null;
+        return new Response(null, { status: 204 });
+      }
+      if (cookie === null) return json(401, { code: "INVALID_REFRESH_TOKEN", message: "세션 없음" });
+      refreshStarted.resolve();
+      await finishRefresh.promise;
+      cookie = "cookie-2";
+      return refreshed("access-2");
+    });
+
+    const refresh = authApi.restoreSession();
+    await refreshStarted.promise;
+    const logout = authApi.logout();
+    await Promise.resolve();
+    expect(pathsOf(fetchMock)).toEqual(["/api/auth/refresh"]);
+    finishRefresh.resolve();
+    await Promise.all([refresh, logout]);
+
+    expect(tokenStore.get()).toBeNull();
+    await expect(authApi.restoreSession()).resolves.toBeNull();
+    expect(pathsOf(fetchMock)).toEqual(["/api/auth/refresh", "/api/auth/logout", "/api/auth/refresh"]);
+  });
+
+  it("로그아웃이 진행되는 동안 예약된 이전 세션 재발급을 건너뛴다", async () => {
+    tokenStore.replaceSession("access-1");
+    const logoutStarted = Promise.withResolvers<void>();
+    const finishLogout = Promise.withResolvers<Response>();
+    const fetchMock = mockFetch(() => {
+      logoutStarted.resolve();
+      return finishLogout.promise;
+    });
+
+    const logout = authApi.logout();
+    await logoutStarted.promise;
+    const refresh = authApi.restoreSession();
+    finishLogout.resolve(new Response(null, { status: 204 }));
+    await logout;
+    await expect(refresh).resolves.toBeNull();
+
+    expect(pathsOf(fetchMock)).toEqual(["/api/auth/logout"]);
+    expect(tokenStore.get()).toBeNull();
+  });
+
+  it.each([200, 401])("늦은 재발급 %i가 새 세션의 토큰을 바꾸지 않는다", async (status) => {
+    tokenStore.replaceSession("account-a");
+    const started = Promise.withResolvers<void>();
+    const response = Promise.withResolvers<Response>();
+    const fetchMock = mockFetch(() => {
+      started.resolve();
+      return response.promise;
+    });
+
+    const previous = authApi.restoreSession();
+    await started.promise;
+    tokenStore.replaceSession("account-b");
+    fetchMock.mockImplementationOnce(async () => refreshed("account-b-refreshed"));
+    const current = authApi.restoreSession();
+    expect(current).not.toBe(previous);
+    response.resolve(status === 200
+      ? refreshed("stale")
+      : json(401, { code: "INVALID_REFRESH_TOKEN", message: "세션 없음" }));
+
+    await expect(previous).resolves.toBeNull();
+    await expect(current).resolves.toMatchObject({ accessToken: "account-b-refreshed" });
+    expect(tokenStore.get()).toBe("account-b-refreshed");
   });
 });

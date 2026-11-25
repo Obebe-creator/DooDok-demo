@@ -1,5 +1,6 @@
 import { request } from "./http";
 import { refreshAccessToken } from "./refresh";
+import { withSessionLock } from "./session-lock";
 import { tokenStore } from "./token-store";
 import type {
   CurrentUser,
@@ -32,18 +33,19 @@ export const authApi = {
   /** 성공하면 Access Token을 저장한다. Refresh Token은 서버가 HttpOnly 쿠키로 심는다. */
   async login(email: string, password: string) {
     const body: LoginRequest = { email, password };
-    const response = await request<TokenResponse>("/api/auth/login", { method: "POST", body });
-    tokenStore.set(response.accessToken);
-    return response;
+    return withSessionLock(async () => {
+      const response = await request<TokenResponse>("/api/auth/login", { method: "POST", body });
+      tokenStore.replaceSession(response.accessToken, response.user.id);
+      return response;
+    });
   },
 
-  /** 서버 요청이 실패해도 이 브라우저의 토큰은 지운다. */
+  /** 서버가 Refresh 쿠키를 폐기한 뒤 이 브라우저의 토큰을 지운다. */
   async logout() {
-    try {
+    return withSessionLock(async () => {
       await request<void>("/api/auth/logout", { method: "POST" });
-    } finally {
-      tokenStore.set(null);
-    }
+      tokenStore.replaceSession(null);
+    });
   },
 
   /** Refresh 쿠키로 세션을 되살린다. 세션이 없으면 null */

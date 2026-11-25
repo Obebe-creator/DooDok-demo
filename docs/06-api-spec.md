@@ -25,7 +25,7 @@
 - Refresh 쿠키는 `HttpOnly; Secure; SameSite=Strict; Path=/api/auth`다. **다른 사이트에서 보낸 요청에는 전송되지 않으므로** 프런트와 API를 같은 사이트(`https://doodok.xyz` / `https://api.doodok.xyz`)에 둔다.
 - 허용 헤더는 `Authorization`, `Content-Type`이고, 프런트가 읽을 수 있는 응답 헤더는 `Location`이다.
 - 프리플라이트(`OPTIONS`) 결과는 브라우저가 1시간 캐시한다(`Access-Control-Max-Age: 3600`). 매 요청 앞의 `OPTIONS` 왕복을 줄이기 위해서다. (Chrome은 최대 2시간까지만 적용)
-- Refresh Token은 재발급 때마다 교체되므로, 프런트는 같은 쿠키로 재발급을 동시에 두 번 보내지 않는다. (뒤 요청은 `401`이 되어 로그아웃된다)
+- Refresh Token은 재발급 때마다 교체된다. 프런트는 같은 탭의 같은 세션에서 진행 중인 재발급을 공유하고, 로그인·재발급·로그아웃을 순서대로 실행해 쿠키 갱신이 겹치지 않게 한다. Web Locks 지원 브라우저에서는 같은 출처의 탭 간에도 이 순서를 보장한다.
 
 ### 성공 응답
 래퍼 없이 리소스를 그대로 반환한다. HTTP 상태 코드로 성공 여부를 이미 알 수 있어서 `success: true` 같은 필드는 두지 않는다.

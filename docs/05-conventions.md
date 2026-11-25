@@ -81,14 +81,18 @@
 
 ## API 호출 (frontend)
 - API는 `@/lib/api`에서 가져다 쓴다. `fetch`를 화면에서 직접 부르지 않는다. (`request()`가 주소, 쿠키 전송, 에러 변환, 토큰 재발급을 맡는다)
-- 로그인이 필요한 API는 `request(path, { auth: true })`로 부른다. `TOKEN_EXPIRED`면 한 번 재발급한 뒤 다시 보낸다.
+- 로그인이 필요한 API는 `request(path, { auth: true })`로 부른다. `TOKEN_EXPIRED`면 같은 세션에서 갱신된 토큰을 사용해 한 번만 다시 보낸다. 세션이 바뀌면 이전 요청을 다시 보내지 않는다.
 - 실패는 `ApiError`로 받는다. 화면 분기는 `code`로 하고, `message`는 그대로 보여 줄 수 있다. 입력값 에러는 `fieldErrors`를 쓴다.
 - Access Token은 메모리(`tokenStore`)에만 둔다. localStorage·sessionStorage에 저장하지 않는다.
-- 로그인 상태는 `useAuth()`로 읽는다. (`loading` / `authenticated` / `unauthenticated`)
+- 인증 상태는 `useAuth()`로 읽는다.
+  - `loading`은 초기 세션 확인 중이다.
+  - `authenticated`는 로그인 또는 세션 복원에 성공한 상태다. `user`에는 ID와 닉네임이 들어 있다. 전체 사용자 정보는 `profile.status`가 `ready`일 때 `profile.user`에서 읽는다. 프로필이 `error`이면 `reloadUser()`로 다시 조회한다.
+  - `unauthenticated`는 서버가 세션 부재를 확인했거나, 다른 계정으로 전환된 세션을 감지했거나, 로그아웃이 성공한 상태다. 로그아웃 요청이 실패하면 오류를 호출자에게 전달하며 인증 상태를 유지한다.
+  - `restoreError`는 네트워크 또는 서버 응답 오류로 세션을 확인하지 못한 상태다. `retryRestore()`로 다시 확인한다.
 - 백엔드 API가 바뀌면 `npm run gen:api`로 `schema.d.ts`를 다시 만들고, 바뀐 부분을 같은 PR에 커밋한다.
 
 ## 테스트 (frontend)
-- Vitest를 쓰고, 테스트 파일은 대상 옆에 `*.test.ts`로 둔다.
+- Vitest를 쓰고, 테스트 파일은 대상 옆에 `*.test.ts` 또는 `*.test.tsx`로 둔다. React 상태 테스트는 파일별로 jsdom 환경을 지정한다.
 - 네트워크는 `vi.stubGlobal("fetch", ...)`로 대신한다. 실제 서버에 요청하지 않는다.
 
 ## 작업 흐름

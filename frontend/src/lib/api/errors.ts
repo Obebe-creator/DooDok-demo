@@ -30,8 +30,15 @@ export class ApiError extends Error {
   }
 }
 
-function isErrorBody(body: unknown): body is ErrorBody {
+function isErrorBody(body: unknown): body is Omit<ErrorBody, "errors"> & { errors?: FieldError[] } {
   if (typeof body !== "object" || body === null) return false;
-  const { code, message } = body as Record<string, unknown>;
-  return typeof code === "string" && typeof message === "string";
+  const { code, message, errors } = body as Record<string, unknown>;
+  return typeof code === "string" && typeof message === "string"
+    && (errors === undefined || (Array.isArray(errors) && errors.every(isFieldError)));
+}
+
+function isFieldError(value: unknown): value is FieldError {
+  if (typeof value !== "object" || value === null) return false;
+  const { field, reason } = value as Record<string, unknown>;
+  return typeof field === "string" && typeof reason === "string";
 }

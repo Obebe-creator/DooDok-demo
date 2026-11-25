@@ -1,6 +1,8 @@
 type Listener = (token: string | null) => void;
 
 let accessToken: string | null = null;
+let sessionUserId: number | null = null;
+let generation = 0;
 const listeners = new Set<Listener>();
 
 /**
@@ -8,12 +10,22 @@ const listeners = new Set<Listener>();
  * 새로고침하면 사라지므로, 앱을 열 때 Refresh 쿠키로 다시 받는다. (AuthProvider)
  */
 export const tokenStore = {
+  generation() {
+    return generation;
+  },
+  userId() {
+    return sessionUserId;
+  },
+  replaceSession(token: string | null, userId: number | null = null): void {
+    generation += 1;
+    tokenStore.set(token, userId);
+  },
   get(): string | null {
     return accessToken;
   },
 
-  set(token: string | null): void {
-    if (token === accessToken) return;
+  set(token: string | null, userId = sessionUserId): void {
+    sessionUserId = token === null ? null : userId;
     accessToken = token;
     listeners.forEach((listener) => listener(token));
   },
