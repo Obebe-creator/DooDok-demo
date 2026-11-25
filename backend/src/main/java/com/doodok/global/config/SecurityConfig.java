@@ -78,6 +78,8 @@ public class SecurityConfig {
         config.setAllowedMethods(List.of("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         config.setExposedHeaders(List.of("Location"));
+        // 프리플라이트(OPTIONS) 결과를 브라우저가 1시간 캐시한다. 매 요청 앞의 OPTIONS 왕복을 줄인다. (Chrome은 최대 2시간)
+        config.setMaxAge(3600L);
         var source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", config);
         return source;

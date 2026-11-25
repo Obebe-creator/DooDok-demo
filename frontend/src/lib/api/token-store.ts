@@ -1,0 +1,40 @@
+type Listener = (token: string | null) => void;
+
+let accessToken: string | null = null;
+let sessionUserId: number | null = null;
+let generation = 0;
+const listeners = new Set<Listener>();
+
+/**
+ * Access Token은 메모리에만 둔다. localStorage에 두면 XSS 한 번에 토큰이 새어 나간다.
+ * 새로고침하면 사라지므로, 앱을 열 때 Refresh 쿠키로 다시 받는다. (AuthProvider)
+ */
+export const tokenStore = {
+  generation() {
+    return generation;
+  },
+  userId() {
+    return sessionUserId;
+  },
+  replaceSession(token: string | null, userId: number | null = null): void {
+    generation += 1;
+    tokenStore.set(token, userId);
+  },
+  get(): string | null {
+    return accessToken;
+  },
+
+  set(token: string | null, userId = sessionUserId): void {
+    sessionUserId = token === null ? null : userId;
+    accessToken = token;
+    listeners.forEach((listener) => listener(token));
+  },
+
+  /** 토큰이 바뀔 때 알림을 받는다. 반환한 함수를 부르면 구독을 끊는다. */
+  subscribe(listener: Listener): () => void {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  },
+};

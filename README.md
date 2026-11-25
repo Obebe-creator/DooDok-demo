@@ -96,10 +96,18 @@ $env:CORS_ALLOWED_ORIGINS = "http://localhost:3000"
 리버스 프록시 뒤에서는 `FORWARD_HEADERS_STRATEGY=native`와 `TRUSTED_PROXY_PATTERN`을 함께 설정한다. 정규식은 백엔드에 연결하는 신뢰된 프록시 주소만 일치시킨다. 신뢰 경계의 첫 프록시는 외부 요청의 `X-Forwarded-For`를 실제 연결 주소로 덮어쓰고, 백엔드는 프록시를 통해서만 접근하도록 구성한다. 배포 후 서로 다른 클라이언트가 각자 IP 한도로 집계되는지 확인한다.
 
 ### 3. 프런트엔드 (http://localhost:3000)
+Node.js 26(LTS)을 사용한다. (CI와 같은 버전)
 ```bash
 cd frontend
 npm install
 npm run dev
+```
+그 밖의 명령:
+```bash
+npm test          # 단위 테스트 (Vitest)
+npm run lint      # ESLint
+npm run typecheck # 타입 검사
+npm run gen:api   # 백엔드 OpenAPI 스펙으로 API 타입 다시 생성 (백엔드가 local 프로필로 실행 중이어야 함)
 ```
 Next.js는 루트 `.env`가 아니라 `frontend/` 폴더의 `.env.local`을 읽는다. API 주소를 바꾸려면 `frontend/.env.local`에 `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080`처럼 적는다.
 
