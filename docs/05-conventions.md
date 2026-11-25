@@ -79,6 +79,18 @@
   3. README: 운영에서 꼭 설정해야 하는 값이면 배포 설명에 추가
 - 프런트 환경 변수는 `frontend/.env.local`에 둔다. 브라우저에서 쓰는 값만 `NEXT_PUBLIC_` 접두어를 붙인다.
 
+## API 호출 (frontend)
+- API는 `@/lib/api`에서 가져다 쓴다. `fetch`를 화면에서 직접 부르지 않는다. (`request()`가 주소, 쿠키 전송, 에러 변환, 토큰 재발급을 맡는다)
+- 로그인이 필요한 API는 `request(path, { auth: true })`로 부른다. `TOKEN_EXPIRED`면 한 번 재발급한 뒤 다시 보낸다.
+- 실패는 `ApiError`로 받는다. 화면 분기는 `code`로 하고, `message`는 그대로 보여 줄 수 있다. 입력값 에러는 `fieldErrors`를 쓴다.
+- Access Token은 메모리(`tokenStore`)에만 둔다. localStorage·sessionStorage에 저장하지 않는다.
+- 로그인 상태는 `useAuth()`로 읽는다. (`loading` / `authenticated` / `unauthenticated`)
+- 백엔드 API가 바뀌면 `npm run gen:api`로 `schema.d.ts`를 다시 만들고, 바뀐 부분을 같은 PR에 커밋한다.
+
+## 테스트 (frontend)
+- Vitest를 쓰고, 테스트 파일은 대상 옆에 `*.test.ts`로 둔다.
+- 네트워크는 `vi.stubGlobal("fetch", ...)`로 대신한다. 실제 서버에 요청하지 않는다.
+
 ## 작업 흐름
 1. 이슈 생성 (템플릿 사용)
 2. `develop`에서 브랜치 생성

@@ -24,6 +24,8 @@
 - Refresh 쿠키를 주고받는 요청(`/auth/login`, `/auth/refresh`, `/auth/logout`)은 `credentials: 'include'`로 보낸다.
 - Refresh 쿠키는 `HttpOnly; Secure; SameSite=Strict; Path=/api/auth`다. **다른 사이트에서 보낸 요청에는 전송되지 않으므로** 프런트와 API를 같은 사이트(`https://doodok.xyz` / `https://api.doodok.xyz`)에 둔다.
 - 허용 헤더는 `Authorization`, `Content-Type`이고, 프런트가 읽을 수 있는 응답 헤더는 `Location`이다.
+- 프리플라이트(`OPTIONS`) 결과는 브라우저가 1시간 캐시한다(`Access-Control-Max-Age: 3600`). 매 요청 앞의 `OPTIONS` 왕복을 줄이기 위해서다. (Chrome은 최대 2시간까지만 적용)
+- Refresh Token은 재발급 때마다 교체되므로, 프런트는 같은 쿠키로 재발급을 동시에 두 번 보내지 않는다. (뒤 요청은 `401`이 되어 로그아웃된다)
 
 ### 성공 응답
 래퍼 없이 리소스를 그대로 반환한다. HTTP 상태 코드로 성공 여부를 이미 알 수 있어서 `success: true` 같은 필드는 두지 않는다.
@@ -703,3 +705,4 @@ ON_SALE ──예약──▶ RESERVED ──완료──▶ SOLD
 | 2026-11-18 | 인증 코드 발송: IP당 요청 제한(1시간 20회, `EMAIL_VERIFICATION_IP_LIMIT`) 추가, 가입 여부 노출(`409 DUPLICATE_EMAIL`)을 감수한 위험으로 명시. 코드 확인은 동시 요청에도 토큰 하나만 발급 |
 | 2026-11-20 | 로그인·토큰 재발급·로그아웃 구현 반영: Refresh Token 14일, 재발급 시 교체, 로그아웃은 Access Token 없이도 호출 가능, 로그인 시도 제한(IP 50회·계정 10회/15분, `LOGIN_ATTEMPTS_EXCEEDED`), 72바이트 초과 비밀번호 처리 |
 | 2026-11-23 | v2.2 OpenAPI 문서 위치, `TOKEN_EXPIRED` 처리 흐름, 브라우저 호출(CORS·쿠키) 규칙 추가 |
+| 2026-11-25 | CORS 프리플라이트 캐시(1시간), 재발급 동시 요청 금지 규칙 추가 |
