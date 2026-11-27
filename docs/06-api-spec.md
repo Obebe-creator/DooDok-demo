@@ -252,8 +252,9 @@
   "hasNext": true
 }
 ```
-- 외부 API 페이지 방식을 따르므로 이 API만 페이지 번호를 쓴다.
-- 에러: `502 BOOK_SEARCH_UNAVAILABLE`
+- 외부 API 페이지 방식을 따르므로 이 API만 페이지 번호를 쓴다. `page`는 1~50(카카오 한도), 한 페이지 10건.
+- `query`는 필수, 100자 이하. ISBN-13이 없는 책(옛날 ISBN-10만 있는 책)은 등록할 수 없어 결과에서 뺀다. 그래서 한 페이지가 10건보다 적을 수 있다.
+- 에러: `400 INVALID_INPUT`, `502 BOOK_SEARCH_UNAVAILABLE`
 
 #### POST `/books` 도서 등록
 사용자가 책을 고르면 호출한다. 이미 있으면 기존 도서를, 없으면 외부 API에서 상세 정보를 가져와 저장한 뒤 반환한다.
@@ -261,10 +262,12 @@
 // Request
 { "isbn13": "9788937460449" }
 
-// 200 OK (이미 있음) 또는 201 Created (새로 저장)
-{ "id": 7, "isbn13": "9788937460449", "title": "데미안", "author": "헤르만 헤세", "publisher": "민음사", "publishedDate": "2000-12-20", "listPrice": 9000, "coverImageUrl": "https://...", "category": "소설" }
+// 200 OK (이미 있음) 또는 201 Created (새로 저장, Location: /api/books/7)
+{ "id": 7, "isbn13": "9788937460449", "title": "데미안", "author": "헤르만 헤세", "publisher": "민음사", "publishedDate": "2000-12-20", "listPrice": 9000, "coverImageUrl": "https://...", "description": "...", "category": null }
 ```
 - 같은 ISBN 요청이 동시에 와도 `isbn13` 유니크 제약으로 하나만 저장된다. 충돌 시 기존 행을 다시 조회해 반환한다.
+- 이미 있는 책은 외부 API를 부르지 않는다. 값이 없는 항목(`author`, `publishedDate`, `listPrice` 등)은 `null`이다. 카카오는 분류를 주지 않아 `category`는 지금 항상 `null`이다.
+- 에러: `400 INVALID_INPUT`(숫자 13자리가 아님), `404 BOOK_NOT_FOUND`(외부 API에 없는 ISBN), `502 BOOK_SEARCH_UNAVAILABLE`
 
 #### GET `/books/{bookId}` 도서 상세
 ```json
@@ -274,6 +277,8 @@
   "stats": { "onSaleCount": 3, "minPrice": 4000, "publicReviewCount": 18, "averageRating": 4.3 }
 }
 ```
+- 지금은 `POST /books` 응답과 같은 필드만 준다. `stats`는 매물·독후감 기능을 만들 때 추가한다.
+- 에러: `404 BOOK_NOT_FOUND`
 
 #### GET `/books/{bookId}/listings` 이 책의 판매 중 매물
 - 쿼리: `sort=price_asc|latest` (기본 `price_asc`), 커서 페이지네이션
@@ -706,3 +711,4 @@ ON_SALE ──예약──▶ RESERVED ──완료──▶ SOLD
 | 2026-11-20 | 로그인·토큰 재발급·로그아웃 구현 반영: Refresh Token 14일, 재발급 시 교체, 로그아웃은 Access Token 없이도 호출 가능, 로그인 시도 제한(IP 50회·계정 10회/15분, `LOGIN_ATTEMPTS_EXCEEDED`), 72바이트 초과 비밀번호 처리 |
 | 2026-11-23 | v2.2 OpenAPI 문서 위치, `TOKEN_EXPIRED` 처리 흐름, 브라우저 호출(CORS·쿠키) 규칙 추가 |
 | 2026-11-25 | CORS 프리플라이트 캐시(1시간), 재발급 동시 요청 금지 규칙 추가 |
+| 2026-11-27 | 도서 검색·등록·상세 구현 반영: 검색 페이지 1~50, ISBN-13 없는 검색 결과 제외, 외부 API에 없는 ISBN 등록은 `404 BOOK_NOT_FOUND`, 도서 상세 `stats`는 매물·독후감 구현 때 추가 |

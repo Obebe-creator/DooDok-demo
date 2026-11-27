@@ -57,6 +57,9 @@ doodok:
     secure-cookie: ${AUTH_SECURE_COOKIE:true}
   mail:
     from: ${MAIL_FROM:no-reply@doodok.local}
+  book:
+    # 비어 있어도 앱은 뜨지만 도서 검색·등록이 502(BOOK_SEARCH_UNAVAILABLE)로 실패한다.
+    kakao-api-key: ${KAKAO_REST_API_KEY:}
 
 server:
   forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}

@@ -46,7 +46,9 @@ public class SecurityConfig {
                 paths.matcher(HttpMethod.POST, "/api/auth/signup"),
                 paths.matcher(HttpMethod.POST, "/api/auth/login"),
                 paths.matcher(HttpMethod.POST, "/api/auth/refresh"),
-                paths.matcher(HttpMethod.POST, "/api/auth/logout"));
+                paths.matcher(HttpMethod.POST, "/api/auth/logout"),
+                // 숫자만 허용해서 GET /api/books/search(로그인 필요)와 겹치지 않게 한다.
+                paths.matcher(HttpMethod.GET, "/api/books/{bookId:\\d+}"));
         http
                 .cors(cors -> cors.configurationSource(apiCorsConfigurationSource))
                 .csrf(csrf -> csrf.disable())
