@@ -1,29 +1,19 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type InputHTMLAttributes } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { buttonClass, TextField } from "@/components/ui";
 import { ApiError, authApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth/AuthProvider";
 
-const primary = "rounded-lg bg-brand px-4 py-2.5 font-semibold text-background hover:opacity-90 disabled:opacity-50";
-const link = "w-fit text-sm font-semibold text-brand underline underline-offset-4 disabled:text-muted disabled:no-underline";
-const input = "w-full rounded-lg border border-muted/35 bg-background px-3 py-2.5 focus-visible:outline-2 focus-visible:outline-brand";
-
-function Field({ label, hint, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
-  return (
-    <label className="grid gap-1.5 text-sm font-medium">
-      {label}
-      <input className={input} required {...props} />
-      {hint && <span className="text-xs text-muted">{hint}</span>}
-    </label>
-  );
-}
+const primary = buttonClass();
+const link = buttonClass({ variant: "link", className: "text-sm font-bold disabled:text-muted disabled:no-underline" });
 
 function ErrorNotice({ error }: { error: unknown }) {
   if (error == null) return null;
   const message = error instanceof ApiError
     ? error.fieldErrors.map(({ reason }) => reason).join(" ") || error.message
     : "요청을 처리하지 못했습니다. 다시 시도해 주세요.";
-  return <p role="alert" className="rounded-lg border border-current px-3 py-2 text-sm text-red-700 dark:text-red-300">{message}</p>;
+  return <p role="alert" className="rounded-xs border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">{message}</p>;
 }
 
 function LoginForm({ email, signupComplete, openSignup }: { email: string; signupComplete: boolean; openSignup: () => void }) {
@@ -52,8 +42,8 @@ function LoginForm({ email, signupComplete, openSignup }: { email: string; signu
       {signupComplete && <p role="status" className="text-sm text-brand">가입이 완료됐습니다. 새 계정으로 로그인해 주세요.</p>}
       <form onSubmit={submit}>
         <fieldset className="grid gap-4" disabled={pending}>
-          <Field label="이메일" name="email" type="email" autoComplete="username" defaultValue={email} maxLength={255} />
-          <Field label="비밀번호" name="password" type="password" autoComplete="current-password" />
+          <TextField label="이메일" name="email" type="email" autoComplete="username" defaultValue={email} maxLength={255} />
+          <TextField label="비밀번호" name="password" type="password" autoComplete="current-password" />
           <ErrorNotice error={error} />
           <button className={primary}>{pending ? "로그인 중…" : "로그인"}</button>
         </fieldset>
@@ -147,12 +137,12 @@ function SignupForm({ initialEmail, openLogin }: { initialEmail: string; openLog
       <form onSubmit={submit} key={step.kind}>
         <fieldset className="grid gap-4" disabled={pending}>
           {step.kind === "email" && (
-            <Field label="이메일" name="email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={255} />
+            <TextField label="이메일" name="email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={255} />
           )}
           {step.kind === "code" && (
             <>
               <p className="break-all text-sm text-muted">{email}로 인증 코드를 보냈습니다.</p>
-              <Field key={step.resendAt} label="인증 코드" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} disabled={expired} />
+              <TextField key={step.resendAt} label="인증 코드" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} disabled={expired} />
               <p className="text-sm text-muted">{expired ? "새 인증 코드를 요청해 주세요." : `코드 유효 시간 ${remaining}초`}</p>
               <div className="flex flex-wrap gap-x-4 gap-y-2">
                 <button type="button" className={link} onClick={() => void run(sendCode)} disabled={resendIn > 0}>
@@ -165,8 +155,8 @@ function SignupForm({ initialEmail, openLogin }: { initialEmail: string; openLog
           {step.kind === "details" && (
             <>
               <p className="break-all text-sm text-brand">인증된 이메일 · {email}</p>
-              <Field label="닉네임" name="nickname" autoComplete="nickname" minLength={2} maxLength={12} disabled={expired} hint="한글, 영문, 숫자, 밑줄로 2~12자" />
-              <Field label="비밀번호" name="password" type="password" autoComplete="new-password" minLength={8} maxLength={20} disabled={expired} hint="영문, 숫자, 특수문자를 모두 포함해 8~20자" />
+              <TextField label="닉네임" name="nickname" autoComplete="nickname" minLength={2} maxLength={12} disabled={expired} hint="한글, 영문, 숫자, 밑줄로 2~12자" />
+              <TextField label="비밀번호" name="password" type="password" autoComplete="new-password" minLength={8} maxLength={20} disabled={expired} hint="영문, 숫자, 특수문자를 모두 포함해 8~20자" />
               {expired && <button type="button" className={link} onClick={restart}>이메일 다시 인증</button>}
             </>
           )}
@@ -209,7 +199,7 @@ export default function AuthPanel() {
   }
 
   return (
-    <section aria-label="계정" className="flex min-w-0 flex-col gap-5 rounded-2xl border border-muted/25 bg-background p-6 shadow-sm sm:p-8">
+    <section aria-label="계정" className="flex min-w-0 flex-col gap-5 rounded-xs border border-line bg-surface p-6 shadow-card sm:p-8">
       {state.status === "loading" && <p role="status" className="text-sm text-muted">로그인 상태를 확인하는 중입니다.</p>}
       {state.status === "restoreError" && (
         <>
