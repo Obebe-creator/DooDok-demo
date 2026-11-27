@@ -16,7 +16,7 @@
 - [x] 가입 전 이메일 인증 (Redis, Mailpit, IP·이메일별 요청 제한)
 - [x] 로그인 (JWT Access Token + Refresh Token 쿠키, 로그인 시도 제한)
 - [ ] 소셜 로그인 (구글·카카오, `password_hash` nullable 마이그레이션, 계정 연결)
-- [ ] 외부 도서 API 연동, ISBN 기준 Book 저장
+- [x] 외부 도서 API 연동, ISBN 기준 Book 저장 (카카오)
 - [ ] 매물 CRUD + 검색 (QueryDSL), 거래 방법 선택
 - [ ] 독후감 CRUD
 - [ ] 내 서재 (읽고 싶은 책 / 읽은 책)

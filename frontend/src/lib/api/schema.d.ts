@@ -4,6 +4,22 @@
  */
 
 export interface paths {
+    "/api/books": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/signup": {
         parameters: {
             query?: never;
@@ -116,14 +132,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/books/{bookId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/books/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        SignupRequest: {
-            signupToken: string;
-            password: string;
-            nickname: string;
+        BookRegisterRequest: {
+            isbn13: string;
         };
         ErrorResponse: {
             code: string;
@@ -133,6 +179,26 @@ export interface components {
         FieldErrorDetail: {
             field: string;
             reason: string;
+        };
+        BookResponse: {
+            /** Format: int64 */
+            id: number;
+            isbn13: string;
+            title: string;
+            author: string;
+            publisher: string;
+            /** Format: date */
+            publishedDate: string;
+            /** Format: int32 */
+            listPrice: number;
+            coverImageUrl: string;
+            description: string;
+            category: string;
+        };
+        SignupRequest: {
+            signupToken: string;
+            password: string;
+            nickname: string;
         };
         SignupResponse: {
             /** Format: int64 */
@@ -184,6 +250,21 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        BookSearchResponse: {
+            items: components["schemas"]["Item"][];
+            /** Format: int32 */
+            page: number;
+            hasNext: boolean;
+        };
+        Item: {
+            isbn13: string;
+            title: string;
+            author: string;
+            publisher: string;
+            coverImageUrl: string;
+            /** Format: int32 */
+            listPrice: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -193,6 +274,66 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    register: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookRegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description 이미 등록된 도서 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BookResponse"];
+                };
+            };
+            /** @description 새로 저장한 도서 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BookResponse"];
+                };
+            };
+            /** @description 요청 검증 실패 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 외부 API에 없는 ISBN */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 외부 도서 API 오류 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     signup: {
         parameters: {
             query?: never;
@@ -441,6 +582,78 @@ export interface operations {
             };
             /** @description Access Token 누락·만료·무효 */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bookId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 도서 상세 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BookResponse"];
+                };
+            };
+            /** @description 도서 없음 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    search: {
+        parameters: {
+            query: {
+                query: string;
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 검색 결과 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["BookSearchResponse"];
+                };
+            };
+            /** @description 요청 검증 실패 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 외부 도서 API 오류 */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
